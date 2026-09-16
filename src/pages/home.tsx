@@ -1,7 +1,8 @@
 /**
- * Home route: the session picker. Dropping files onto the page jumps straight
- * into the text-compare route with the dropped paths passed through router
- * state (folder/git use explicit pickers on their own routes).
+ * Home route: the session picker. Dropping files opens the comparison type
+ * matching the feature card under the pointer (text/folder/git); dropping
+ * elsewhere on the page auto-routes by path kind (directories -> folder,
+ * files -> text). Paths are passed through router state.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import cx from 'classnames';
@@ -185,22 +186,31 @@ export function HomePage() {
   // Check which history entries have stale paths (grey out + tooltip). Validate the full list when the modal is open, otherwise only the 5 on the home page.
   const stale = useStaleHistory(moreOpen ? allRecent : recent);
 
-  // Native Tauri drag-drop on the home screen: while hovering we just highlight
-  // the drop area; on drop we inspect the actual path types and route by kind —
-  // directories go into folder-compare, plain files go into text-compare.
+  // Native Tauri drag-drop on the home screen. While hovering we hit-test the pointer
+  // position against the session cards (via data-session) and highlight just that card;
+  // elsewhere nothing is highlighted. On drop, a hovered card forces that comparison
+  // type; elsewhere we auto-route by path kind.
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     let disposed = false;
+    // Session card under the pointer (null = none). Wry (macOS) reports the drag
+    // position in top-left-origin AppKit points, i.e. already CSS pixels — no
+    // devicePixelRatio conversion (verified against wry's drag_drop.rs).
+    const sessionAt = (px: number, py: number): string | null => {
+      const el = document.elementFromPoint(px, py);
+      return el?.closest<HTMLElement>('[data-session]')?.dataset.session ?? null;
+    };
     getCurrentWebview()
       .onDragDropEvent((event) => {
         const p = event.payload;
         if (p.type === 'over') {
-          setHoverKey('drop');
+          setHoverKey(sessionAt(p.position.x, p.position.y));
         } else if (p.type === 'drop') {
+          const session = sessionAt(p.position.x, p.position.y);
           setHoverKey(null);
           const paths = p.paths.filter(Boolean);
           if (paths.length === 0) return;
-          void routeByKind(paths);
+          void (session ? routeBySession(session, paths) : routeByKind(paths));
         } else {
           setHoverKey(null);
         }
@@ -214,11 +224,13 @@ export function HomePage() {
       disposed = true;
       unlisten?.();
     };
+    // routeBySession/routeByKind only read navRef, never component state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Look up whether the dropped paths are directories or files, then route:
   //   - any directory present  -> folder-compare (first two dirs as left/right)
-  //   - otherwise (files only)  -> text-compare
+  //   - otherwise (files only) -> text-compare
   async function routeByKind(paths: string[]) {
     try {
       const kinds = await Promise.all(paths.map((path) => invoke<string>('path_kind', { path })));
@@ -241,7 +253,42 @@ export function HomePage() {
     }
   }
 
-  const dragging = hoverKey === 'drop';
+  // Drop landed on a specific session card: route to that card's comparison type.
+  //   - text   -> the dropped files (first two) as left/right
+  //   - folder -> the dropped directories (first two) as left/right
+  //   - git    -> the dropped directory as the repo
+  // If the paths don't fit the card (e.g. a folder dropped on the text card) or type
+  // detection fails, fall back to auto routing by kind so the drop still does something sensible.
+  async function routeBySession(session: string, paths: string[]) {
+    try {
+      const kinds = await Promise.all(paths.map((path) => invoke<string>('path_kind', { path })));
+      const dirs = paths.filter((_, i) => kinds[i] === 'dir');
+      const files = paths.filter((_, i) => kinds[i] === 'file');
+      if (session === 'git' && dirs.length > 0) {
+        navRef.current('/git-compare', { state: { repo: dirs[0] } });
+        return;
+      }
+      if (session === 'folder' && dirs.length > 0) {
+        navRef.current('/folder-compare', {
+          state: dirs.length >= 2 ? { left: dirs[0], right: dirs[1] } : { left: dirs[0] },
+        });
+        return;
+      }
+      if (session === 'text' && files.length > 0) {
+        navRef.current('/text-compare', {
+          state: files.length >= 2 ? { left: files[0], right: files[1] } : { left: files[0] },
+        });
+        return;
+      }
+    } catch {
+      // Type detection failed: fall through to auto routing.
+    }
+    void routeByKind(paths);
+  }
+
+  // Session card currently targeted by the drag (null = none); hoverKey only ever
+  // holds a card key or null — the bare page area is no longer a highlighted target.
+  const dropSession = hoverKey;
 
   return (
     <div className="relative flex flex-col flex-1 min-h-0 overflow-hidden">
@@ -260,6 +307,8 @@ export function HomePage() {
               className={cx(
                 'cursor-pointer text-center transition-transform',
                 !s.enabled && 'opacity-50 cursor-not-allowed',
+                // Drag-over highlight: ring the card being targeted.
+                dropSession === s.key && 'ring-2 ring-accent rounded-lg',
               )}
               onClick={s.enabled ? () => navigate(pathFor(s.key)) : undefined}
               size="small"
@@ -332,13 +381,6 @@ export function HomePage() {
           )}
         </div>
       </Modal>
-
-      {/* Full-page drop highlight: the drop target is the whole window, so a full-page overlay is used, matching the copy. */}
-      {dragging && (
-        <div className="absolute inset-0 z-30 flex items-center justify-center bg-accent-bg/70 border-2 border-dashed border-accent pointer-events-none">
-          <div className="text-base font-medium text-accent">{t('dropToStart')}</div>
-        </div>
-      )}
     </div>
   );
 }

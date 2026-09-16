@@ -346,13 +346,28 @@ export function FolderComparePage() {
                   <Divider vertical className="mx-0.5" />
                 </>
               )}
-              {activeActions?.hasFile && (
+              {/* Refresh lives in the header for both tab kinds: on a file tab it reloads that
+                  file pair; on the tree tab it recomputes the directory diff (always visible,
+                  disabled with nothing picked — mirrors text-compare). */}
+              {activeActions ? (
+                activeActions.hasFile && (
+                  <Tooltip title={t('common:refresh')}>
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<ReloadOutlined />}
+                      onClick={() => activeActions.reload()}
+                    />
+                  </Tooltip>
+                )
+              ) : (
                 <Tooltip title={t('common:refresh')}>
                   <Button
                     type="text"
                     size="small"
                     icon={<ReloadOutlined />}
-                    onClick={() => activeActions.reload()}
+                    disabled={!leftDir && !rightDir}
+                    onClick={() => void refresh()}
                   />
                 </Tooltip>
               )}

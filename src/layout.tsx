@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { Outlet, useLocation, useNavigate, useOutletContext } from 'react-router-dom';
-import { App as AntdApp, ConfigProvider, Dropdown, Empty, Menu, Segmented } from 'antd';
+import { App as AntdApp, ConfigProvider, Dropdown, Menu, Segmented } from 'antd';
 import type { MenuProps } from 'antd';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
@@ -398,25 +398,20 @@ function RecentPanel({
           {/* Divider between the action area and the recent list. */}
           <div className="mx-2 my-1 h-px shrink-0 bg-split" />
           <div className="shrink-0 px-4 pt-1 pb-1 text-[12px] text-muted">{t('recentCompare')}</div>
-          {recent?.length === 0 ? (
-            <div className="flex items-center justify-center px-2.5 py-6">
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={false} />
-            </div>
-          ) : (
-            <ConfigProvider theme={menuSkinTheme}>
-              <Menu
-                mode="inline"
-                items={recentItems}
-                className="pc-menu-skin flex-1 min-h-0 overflow-auto px-2 pb-2 pt-0"
-                selectedKeys={[]}
-                onClick={({ key }) => {
-                  // Key lookup must go through entryKey — it's both the item key and the dedupe identity.
-                  const entry = recent.find((e) => entryKey(e) === key);
-                  if (entry) openEntry(entry);
-                }}
-              />
-            </ConfigProvider>
-          )}
+          {/* Empty list renders nothing: the Menu simply shows no items (no Empty placeholder). */}
+          <ConfigProvider theme={menuSkinTheme}>
+            <Menu
+              mode="inline"
+              items={recentItems}
+              className="pc-menu-skin flex-1 min-h-0 overflow-auto px-2 pb-2 pt-0"
+              selectedKeys={[]}
+              onClick={({ key }) => {
+                // Key lookup must go through entryKey — it's both the item key and the dedupe identity.
+                const entry = recent.find((e) => entryKey(e) === key);
+                if (entry) openEntry(entry);
+              }}
+            />
+          </ConfigProvider>
           {/* Fixed entry at the bottom (mt-auto pushes it to the bottom, always visible).
               Opens a dropdown with a quick theme switch (Segmented on the row's right) and the settings modal entry. */}
           <div className="mt-auto shrink-0 px-2 py-2">

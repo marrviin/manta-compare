@@ -13,9 +13,9 @@ import cx from 'classnames';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
-import { Button, Empty, Select, Tooltip } from 'antd';
+import { Empty, Select, Tooltip } from 'antd';
 import { useTranslation } from 'react-i18next';
-import { FolderOpenOutlined, ReloadOutlined } from '@ant-design/icons';
+import { FolderOpenOutlined } from '@ant-design/icons';
 import { Side } from '../diff-view';
 import { DiffMenuAction, DiffSideTable, buildRecords, folderColumns } from '../diff-table';
 import { useScrollSync } from '../scroll-sync';
@@ -219,16 +219,6 @@ export function GitTreePane({ active }: { active: boolean }) {
         popupMatchSelectWidth={420}
         optionFilterProp="label"
       />
-      <Tooltip title={t('common:refresh')}>
-        <Button
-          type="text"
-          size="small"
-          className="flex-none shrink-0"
-          icon={<ReloadOutlined />}
-          disabled={!repo || !from}
-          onClick={refresh}
-        />
-      </Tooltip>
     </div>
   );
 

@@ -47,7 +47,6 @@ const en = {
     searchPlaceholder: 'Search file name / path / repo',
     noMatch: 'No matching comparisons',
     stalePath: 'Path no longer exists; it may have been moved or deleted',
-    dropToStart: 'Release to start comparing',
   },
   folder: {
     pickLeftDir: 'Select left directory',
@@ -60,7 +59,7 @@ const en = {
     dropDirOnly: 'Folder compare only accepts directories',
     sameContent: 'The two directories are identical',
     waitOtherSide: 'Waiting for the other directory',
-    treeTab: 'Directory Compare',
+    treeTab: 'Folder Compare',
     copyToRight: 'Copy to right',
     copyToLeft: 'Copy to left',
     deleteToTrash: 'Move to trash',

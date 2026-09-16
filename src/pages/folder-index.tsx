@@ -13,7 +13,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { Button, Empty, Tooltip } from 'antd';
 import { useTranslation } from 'react-i18next';
-import { FolderOpenOutlined, ReloadOutlined } from '@ant-design/icons';
+import { FolderOpenOutlined } from '@ant-design/icons';
 import { Side } from '../diff-view';
 import { DiffMenuAction, DiffSideTable, buildRecords, folderColumns } from '../diff-table';
 import { useScrollSync } from '../scroll-sync';
@@ -206,16 +206,6 @@ export function FolderTreePane({ active }: { active: boolean }) {
           className="flex-none"
           icon={<FolderOpenOutlined />}
           onClick={() => pickDir(side)}
-        />
-      </Tooltip>
-      <Tooltip title={t('common:refresh')}>
-        <Button
-          type="text"
-          size="small"
-          className="flex-none"
-          icon={<ReloadOutlined />}
-          disabled={!dir}
-          onClick={() => void refresh()}
         />
       </Tooltip>
     </div>

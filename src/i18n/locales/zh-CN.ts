@@ -48,7 +48,6 @@ const zhCN = {
     searchPlaceholder: '搜索文件名 / 路径 / 仓库',
     noMatch: '没有匹配的对比',
     stalePath: '路径已不存在，可能已被移动或删除',
-    dropToStart: '松开以开始对比',
   },
   folder: {
     pickLeftDir: '选择左侧目录',
@@ -61,7 +60,7 @@ const zhCN = {
     dropDirOnly: '文件夹对比仅支持文件夹',
     sameContent: '两个目录内容一致',
     waitOtherSide: '等待另一侧目录',
-    treeTab: '目录对比',
+    treeTab: '文件夹对比',
     copyToRight: '复制到右侧',
     copyToLeft: '复制到左侧',
     deleteToTrash: '删除到回收站',

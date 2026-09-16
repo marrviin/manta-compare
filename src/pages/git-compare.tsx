@@ -360,13 +360,28 @@ export function GitComparePage() {
                   <Divider vertical className="mx-0.5" />
                 </>
               )}
-              {activeActions?.hasFile && (
+              {/* Refresh lives in the header for both tab kinds: on a file tab it reloads that
+                  file pair; on the tree tab it recomputes the ref diff (always visible,
+                  disabled until a repo + from-ref are picked — mirrors text-compare). */}
+              {activeActions ? (
+                activeActions.hasFile && (
+                  <Tooltip title={t('common:refresh')}>
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<ReloadOutlined />}
+                      onClick={() => activeActions.reload()}
+                    />
+                  </Tooltip>
+                )
+              ) : (
                 <Tooltip title={t('common:refresh')}>
                   <Button
                     type="text"
                     size="small"
                     icon={<ReloadOutlined />}
-                    onClick={() => activeActions.reload()}
+                    disabled={!repo || !from}
+                    onClick={refresh}
                   />
                 </Tooltip>
               )}
