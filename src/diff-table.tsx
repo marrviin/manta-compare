@@ -9,6 +9,8 @@
  *   - The "name" column is built in (expand arrow + icon + name + status color); right-clicking a row opens a context menu
  *     (copy to the other side / delete to trash); other columns are passed in via the `columns` config;
  *   - A node that doesn't exist on this side leaves the whole row empty + a placeholder background (added only on the right, removed only on the left);
+ *   - Single click selects a row (files and dirs alike; Ctrl/Cmd+click toggles, Shift+click range-selects for batch actions);
+ *     double click opens a file (as a tab, via `onSelect`) or toggles a directory's expansion;
  *   - Zebra striping injects a class based on the global parity of the "visible row order after expansion"; both sides share the visible order -> alignment.
  */
 import { MouseEvent as ReactMouseEvent, ReactNode, useCallback, useMemo, useState } from 'react';
@@ -60,16 +62,22 @@ export interface DiffColumn {
  */
 export interface DiffMenuAction {
   key: string;
-  /** Menu label; can vary by the current side (e.g. "copy to right" / "copy to left"). */
-  label: string | ((side: Side) => string);
+  /**
+   * Menu label; can vary by the current side (e.g. "copy to right" / "copy to left").
+   * The second argument is the number of nodes the action will actually run on
+   * (the multi-selection, or 1 for a single row) so callers can render "N items" labels.
+   */
+  label: string | ((side: Side, count: number) => string);
   /** Dangerous item (red), such as delete. */
   danger?: boolean;
   /**
    * Whether this item is available for the given node / side. Omitting it means "available if it exists on this side".
    * Returning false hides the item; if a row has no available items, no menu pops for that row.
+   * For a multi-selection the action only runs on the selected nodes this returns true for.
    */
   enabled?: (node: DiffRecord, side: Side) => boolean;
-  onClick: (node: DiffRecord, side: Side) => void;
+  /** Called once per menu click with every eligible selected node (the table filters by exists-on-side + enabled). */
+  onClick: (nodes: DiffRecord[], side: Side) => void;
 }
 
 /** Size with thousands separators; directories / missing show a placeholder dash. */
@@ -244,6 +252,24 @@ function visibleParity(records: DiffRecord[], expandedKeys: string[]): Map<strin
   return parity;
 }
 
+/**
+ * Collect the visible rows (including directories) in "expanded row order", shared by
+ * zebra parity and Shift-range multi-selection. Both sides share records + expandedKeys
+ * -> identical order.
+ */
+function visibleRows(records: DiffRecord[], expandedKeys: string[]): DiffRecord[] {
+  const expanded = new Set(expandedKeys);
+  const out: DiffRecord[] = [];
+  const walk = (nodes: DiffRecord[]) => {
+    for (const n of nodes) {
+      out.push(n);
+      if (n.isDir && n.children && expanded.has(n.path)) walk(n.children);
+    }
+  };
+  walk(records);
+  return out;
+}
+
 function iconImg(url: string) {
   return (
     <img
@@ -273,7 +299,7 @@ export function DiffSideTable({
   /** Config for the additional columns after the name column. */
   columns: DiffColumn[];
   selectedPath: string | null;
-  /** Click on a file node (only when it exists on this side). */
+  /** Double click on a file node (only when it exists on this side): opens it (e.g. as a file tab). */
   onSelect: (path: string) => void;
   /** Right-click menu items (each page provides them per its own semantics). Omitting / an empty array means no menu. */
   menuActions?: DiffMenuAction[];
@@ -350,6 +376,36 @@ export function DiffSideTable({
   // Right-click menu: record the right-clicked node and viewport coordinates; use controlled open + an anchor positioned at the cursor.
   const [ctx, setCtx] = useState<{ record: DiffRecord; x: number; y: number } | null>(null);
 
+  // Multi-selection (for batch right-click actions), internal to the table: Ctrl/Cmd toggles rows,
+  // Shift selects a visible-order range from the anchor row, plain click collapses to one row.
+  // Cleared whenever records change (new diff / refresh invalidates the old paths) — reset during
+  // render (the React-recommended "adjust state when props change" pattern, no effect needed).
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [anchor, setAnchor] = useState<string | null>(null);
+  const [prevRecords, setPrevRecords] = useState(records);
+  if (prevRecords !== records) {
+    setPrevRecords(records);
+    setSelected(new Set());
+    setAnchor(null);
+  }
+
+  // Selected rows in visible order (rows absent on this side can never be selected).
+  const selectedRecords = useMemo(
+    () => visibleRows(records, expandedKeys).filter((n) => selected.has(n.path)),
+    [records, expandedKeys, selected],
+  );
+
+  // The node set the open menu acts on: the whole selection when the right-clicked row is
+  // part of it, otherwise just that row (right-clicking outside the selection shrinks it).
+  const ctxNodes = useMemo<DiffRecord[]>(() => {
+    const record = ctx?.record;
+    if (!record) return [];
+    if (selected.has(record.path) && selectedRecords.some((n) => n.path === record.path)) {
+      return selectedRecords;
+    }
+    return [record];
+  }, [ctx, selected, selectedRecords]);
+
   // For a given node, filter out the available menu items (exists on this side + passes action.enabled).
   const actionsFor = useCallback(
     (record: DiffRecord): DiffMenuAction[] => {
@@ -359,24 +415,114 @@ export function DiffSideTable({
     [menuActions, side],
   );
 
+  // Per action: the selected nodes it will actually run on (exists-on-side rows passing enabled).
+  const eligibleFor = useCallback(
+    (a: DiffMenuAction): DiffRecord[] =>
+      ctxNodes.filter(
+        (n) => existsOnSide(n.status, side) && (a.enabled ? a.enabled(n, side) : true),
+      ),
+    [ctxNodes, side],
+  );
+
   const menuItems = useMemo<MenuProps['items']>(() => {
-    const record = ctx?.record;
-    if (!record) return [];
-    return actionsFor(record).map((a) => ({
-      key: a.key,
-      label: typeof a.label === 'function' ? a.label(side) : a.label,
-      danger: a.danger,
-    }));
-  }, [ctx, actionsFor, side]);
+    if (!ctx || !menuActions) return [];
+    return menuActions
+      .map((a) => ({ action: a, nodes: eligibleFor(a) }))
+      .filter(({ nodes }) => nodes.length > 0)
+      .map(({ action, nodes }) => ({
+        key: action.key,
+        label: typeof action.label === 'function' ? action.label(side, nodes.length) : action.label,
+        danger: action.danger,
+      }));
+  }, [ctx, menuActions, eligibleFor, side]);
 
   const onMenuClick = useCallback<NonNullable<MenuProps['onClick']>>(
     ({ key }) => {
-      const record = ctx?.record;
+      const action = menuActions?.find((a) => a.key === key);
+      const nodes = action ? eligibleFor(action) : [];
       setCtx(null);
-      if (!record) return;
-      menuActions?.find((a) => a.key === key)?.onClick(record, side);
+      if (action && nodes.length > 0) action.onClick(nodes, side);
     },
-    [ctx, menuActions, side],
+    [menuActions, eligibleFor, side],
+  );
+
+  // Plain click on a row (file or dir): collapse the selection to that row and remember the
+  // Shift-range anchor. Opening (files) / expanding (dirs) happens on double click instead.
+  const onRowClick = useCallback(
+    (record: DiffRecord, e: ReactMouseEvent) => {
+      if (!existsOnSide(record.status, side)) return;
+      if (e.shiftKey && anchor) {
+        // Range select between the anchor and the clicked row, in visible row order.
+        const order = visibleRows(records, expandedKeys);
+        const a = order.findIndex((n) => n.path === anchor);
+        const b = order.findIndex((n) => n.path === record.path);
+        if (a !== -1 && b !== -1) {
+          const [lo, hi] = a < b ? [a, b] : [b, a];
+          setSelected(
+            new Set(
+              order
+                .slice(lo, hi + 1)
+                .filter((n) => existsOnSide(n.status, side))
+                .map((n) => n.path),
+            ),
+          );
+          window.getSelection()?.removeAllRanges();
+          return;
+        }
+      }
+      if (e.metaKey || e.ctrlKey) {
+        // Toggle the row in the selection (files and dirs alike).
+        setSelected((prev) => {
+          const next = new Set(prev);
+          if (next.has(record.path)) next.delete(record.path);
+          else next.add(record.path);
+          return next;
+        });
+        setAnchor(record.path);
+        window.getSelection()?.removeAllRanges();
+        return;
+      }
+      setAnchor(record.path);
+      setSelected(new Set([record.path]));
+    },
+    [side, anchor, records, expandedKeys],
+  );
+
+  // Double click: a file opens (via onSelect), a directory toggles its expansion (replacing the
+  // former expandRowByClick single-click toggling). Dblclick also selects text — clear it.
+  const onRowDoubleClick = useCallback(
+    (record: DiffRecord) => {
+      if (!existsOnSide(record.status, side)) return;
+      window.getSelection()?.removeAllRanges();
+      if (record.isDir) {
+        const expanded = expandedKeys.includes(record.path);
+        onExpand(
+          expanded ? expandedKeys.filter((k) => k !== record.path) : [...expandedKeys, record.path],
+        );
+      } else {
+        setSelected(new Set([record.path]));
+        onSelect(record.path);
+      }
+    },
+    [side, expandedKeys, onExpand, onSelect],
+  );
+
+  const onRowContextMenu = useCallback(
+    (record: DiffRecord, e: ReactMouseEvent) => {
+      // If the row has no available items, don't pop (placeholder row / all disabled).
+      if (actionsFor(record).length === 0) {
+        setCtx(null);
+        return;
+      }
+      e.preventDefault();
+      // Clear the text selection created by the right-click, so the file name isn't highlighted as selected.
+      window.getSelection()?.removeAllRanges();
+      // Right-clicking outside the selection collapses it to that row; inside, the whole selection is kept.
+      setSelected((prev) => (prev.has(record.path) ? prev : new Set([record.path])));
+      setAnchor(record.path);
+      setCtx({ record, x: e.clientX, y: e.clientY });
+    },
+    [actionsFor],
   );
 
   // Merged ref: the container needs both size measurement (virtual scroll + name column width) and registration into sync scrolling.
@@ -424,32 +570,23 @@ export function DiffSideTable({
         expandable={{
           expandedRowKeys: expandedKeys,
           onExpandedRowsChange: (keys) => onExpand([...keys] as string[]),
-          expandRowByClick: true,
+          // Row clicks only select; expansion is via the arrow or a double click on the row.
+          expandRowByClick: false,
         }}
         rowClassName={(record) => {
           const zebra = parity.get(record.path) === 1 ? 'zebra-odd' : 'zebra-even';
           const absent = existsOnSide(record.status, side) ? '' : 'diff-row-absent';
-          const selected = record.path === selectedPath ? 'diff-row-selected' : '';
-          return cx(zebra, absent, selected);
+          const highlighted =
+            record.path === selectedPath || selected.has(record.path) ? 'diff-row-selected' : '';
+          // select-none: single click selects the row, double click opens it — neither should
+          // drag-select the cell text (name / size / mtime).
+          return cx('select-none', zebra, absent, highlighted);
         }}
         onRow={(record) => ({
-          onClick: () => {
-            if (!record.isDir && existsOnSide(record.status, side)) {
-              onSelect(record.path);
-            }
-          },
+          onClick: (e: ReactMouseEvent) => onRowClick(record, e),
+          onDoubleClick: () => onRowDoubleClick(record),
           onContextMenu: menuEnabled
-            ? (e: ReactMouseEvent) => {
-                // If the row has no available items, don't pop (placeholder row / all disabled).
-                if (actionsFor(record).length === 0) {
-                  setCtx(null);
-                  return;
-                }
-                e.preventDefault();
-                // Clear the text selection created by the right-click, so the file name isn't highlighted as selected.
-                window.getSelection()?.removeAllRanges();
-                setCtx({ record, x: e.clientX, y: e.clientY });
-              }
+            ? (e: ReactMouseEvent) => onRowContextMenu(record, e)
             : undefined,
         })}
         className="text-[13px]"

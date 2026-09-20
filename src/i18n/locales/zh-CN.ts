@@ -12,6 +12,8 @@ const zhCN = {
     nextDiff: '下一处差异 (F8)',
     findReplace: '查找 / 替换',
     fileCount: '{{count}} 个文件',
+    confirm: '确定',
+    cancel: '取消',
   },
   layout: {
     textCompare: '文本对比',
@@ -63,7 +65,12 @@ const zhCN = {
     treeTab: '文件夹对比',
     copyToRight: '复制到右侧',
     copyToLeft: '复制到左侧',
+    copyToRightN: '复制到右侧 ({{count}})',
+    copyToLeftN: '复制到左侧 ({{count}})',
     deleteToTrash: '删除到回收站',
+    deleteToTrashN: '删除到回收站 ({{count}})',
+    deleteBatchConfirmTitle: '批量删除',
+    deleteBatchConfirmContent: '确定将选中的 {{count}} 项移到回收站吗？',
   },
   git: {
     pickRepo: '选择 Git 仓库目录',
@@ -80,7 +87,11 @@ const zhCN = {
     clickOrDropRepo: '点击选择，或拖入 Git 仓库目录',
     needGitRoot: '需为包含 .git 的仓库根目录',
     checkoutToWorktree: '检出到工作区',
+    checkoutToWorktreeN: '检出到工作区 ({{count}})',
     deleteToTrash: '删除到回收站',
+    deleteToTrashN: '删除到回收站 ({{count}})',
+    deleteBatchConfirmTitle: '批量删除',
+    deleteBatchConfirmContent: '确定将选中的 {{count}} 项移到回收站吗？',
     treeTab: 'Git 对比',
   },
   diff: {
@@ -166,6 +177,10 @@ const zhCN = {
     ignoredDirsDesc: '文件夹对比时跳过同名目录（任意层级，精确匹配）。',
     ignoredDirsPlaceholder: '如 .cache、build、coverage',
     deleteItem: '删除 {{name}}',
+    finderIntegration: 'Finder 集成',
+    finderQuickAction: 'Finder 右键对比',
+    finderQuickActionDesc:
+      '自动安装右键快速操作：在 Finder 中选中两个文件或文件夹，右键 → 快速操作 → 用 Manta Compare 对比。首次安装后可能需要重新打开 Finder。',
   },
 } as const;
 

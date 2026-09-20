@@ -4,18 +4,26 @@
  *   - Each of the left/right panes renders the same diff records (DiffSideTable), marking diffs with color/placeholders;
  *   - The bottom shows each side's file count on the left/right;
  *   - Right-clicking a diff node pops a menu: copy to the other side, delete to trash; the diff is recomputed after the action.
- * Clicking a file node opens it as a file tab (see useFileTabs on the owning page).
+ *     Multi-select (Ctrl/Cmd or Shift click, files and folders) turns the same menu into batch actions.
+ * Clicking a row selects it; double-clicking a file opens it as a file tab and double-clicking
+ * a folder toggles its expansion (see useFileTabs on the owning page).
  */
 import { useEffect, useMemo, useState } from 'react';
 import cx from 'classnames';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
-import { Button, Empty, Tooltip } from 'antd';
+import { Button, Empty, Modal, Tooltip } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { FolderOpenOutlined } from '@ant-design/icons';
 import { Side } from '../diff-view';
-import { DiffMenuAction, DiffSideTable, buildRecords, folderColumns } from '../diff-table';
+import {
+  DiffMenuAction,
+  DiffRecord,
+  DiffSideTable,
+  buildRecords,
+  folderColumns,
+} from '../diff-table';
 import { useScrollSync } from '../scroll-sync';
 import { useFolder } from './folder-compare';
 
@@ -115,30 +123,49 @@ export function FolderTreePane({ active }: { active: boolean }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, leftDir, rightDir]);
 
-  // Copy a file/folder to the other side: from the `from` side -> the mirror path on the other side; recompute the diff when done.
-  async function copyEntry(path: string, _isDir: boolean, from: Side) {
+  // Copy files/folders to the other side: from the `from` side -> the mirror paths on the other
+  // side; recompute the diff once after the whole batch is done.
+  async function copyEntries(nodes: DiffRecord[], from: Side) {
     if (!leftDir || !rightDir) return;
     const srcRoot = from === 'left' ? leftDir : rightDir;
     const dstRoot = from === 'left' ? rightDir : leftDir;
     setError('');
     try {
-      await invoke('copy_path', {
-        src: `${srcRoot}/${path}`,
-        dst: `${dstRoot}/${path}`,
-      });
+      for (const node of nodes) {
+        await invoke('copy_path', {
+          src: `${srcRoot}/${node.path}`,
+          dst: `${dstRoot}/${node.path}`,
+        });
+      }
       await refresh();
     } catch (e) {
       setError(String(e));
     }
   }
 
-  // Delete a file/folder to the trash (the `from` side's path); recompute the diff when done.
-  async function deleteEntry(path: string, _isDir: boolean, from: Side) {
+  // Delete files/folders to the trash (the `from` side's paths); recompute the diff when done.
+  // A batch (>1) confirms first; a single entry keeps the old no-confirm behavior.
+  async function deleteEntries(nodes: DiffRecord[], from: Side) {
     const root = from === 'left' ? leftDir : rightDir;
-    if (!root) return;
+    if (!root || nodes.length === 0) return;
+    if (nodes.length > 1) {
+      const confirmed = await new Promise<boolean>((resolve) => {
+        Modal.confirm({
+          title: t('deleteBatchConfirmTitle'),
+          content: t('deleteBatchConfirmContent', { count: nodes.length }),
+          okText: t('common:confirm'),
+          cancelText: t('common:cancel'),
+          onOk: () => resolve(true),
+          onCancel: () => resolve(false),
+        });
+      });
+      if (!confirmed) return;
+    }
     setError('');
     try {
-      await invoke('trash_path', { path: `${root}/${path}` });
+      for (const node of nodes) {
+        await invoke('trash_path', { path: `${root}/${node.path}` });
+      }
       await refresh();
     } catch (e) {
       setError(String(e));
@@ -146,21 +173,29 @@ export function FolderTreePane({ active }: { active: boolean }) {
   }
 
   // Right-click menu: copy to the other side + delete to trash (available for any node that exists on this side).
+  // With a multi-selection the labels show the affected count and the actions run over the whole batch.
   const menuActions = useMemo<DiffMenuAction[]>(
     () => [
       {
         key: 'copy',
-        label: (s) => (s === 'left' ? t('copyToRight') : t('copyToLeft')),
-        onClick: (node, s) => void copyEntry(node.path, node.isDir, s),
+        label: (s, count) =>
+          count > 1
+            ? s === 'left'
+              ? t('copyToRightN', { count })
+              : t('copyToLeftN', { count })
+            : s === 'left'
+              ? t('copyToRight')
+              : t('copyToLeft'),
+        onClick: (nodes, s) => void copyEntries(nodes, s),
       },
       {
         key: 'delete',
-        label: t('deleteToTrash'),
+        label: (_s, count) => (count > 1 ? t('deleteToTrashN', { count }) : t('deleteToTrash')),
         danger: true,
-        onClick: (node, s) => void deleteEntry(node.path, node.isDir, s),
+        onClick: (nodes, s) => void deleteEntries(nodes, s),
       },
     ],
-    // copyEntry / deleteEntry depend on leftDir/rightDir and are rebuilt when they change; menu text refreshes when t changes (language switch).
+    // copyEntries / deleteEntries depend on leftDir/rightDir and are rebuilt when they change; menu text refreshes when t changes (language switch).
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [leftDir, rightDir, t],
   );

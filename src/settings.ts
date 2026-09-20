@@ -42,6 +42,8 @@ export interface Settings {
   confirmOnUnsaved: boolean;
   /** Watch open files for external changes and prompt to reload. */
   watchFiles: boolean;
+  /** macOS only: keep the Finder Quick Action ("Compare with Manta Compare" in the context menu) installed. */
+  finderQuickAction: boolean;
 }
 
 /** Built-in default ignored directories (matching the old backend's hardcoded list); treated as "built-in" and not removable. */
@@ -55,6 +57,7 @@ export const DEFAULT_SETTINGS: Settings = {
   ignoreCase: false,
   confirmOnUnsaved: true,
   watchFiles: true,
+  finderQuickAction: true,
 };
 
 const STORE_FILE = 'settings.json';

@@ -11,6 +11,8 @@ const en = {
     nextDiff: 'Next diff (F8)',
     findReplace: 'Find / Replace',
     fileCount: '{{count}} files',
+    confirm: 'OK',
+    cancel: 'Cancel',
   },
   layout: {
     textCompare: 'Text Compare',
@@ -62,7 +64,12 @@ const en = {
     treeTab: 'Folder Compare',
     copyToRight: 'Copy to right',
     copyToLeft: 'Copy to left',
+    copyToRightN: 'Copy to right ({{count}})',
+    copyToLeftN: 'Copy to left ({{count}})',
     deleteToTrash: 'Move to trash',
+    deleteToTrashN: 'Move to trash ({{count}})',
+    deleteBatchConfirmTitle: 'Batch delete',
+    deleteBatchConfirmContent: 'Move the selected {{count}} items to the trash?',
   },
   git: {
     pickRepo: 'Select a Git repository directory',
@@ -79,7 +86,11 @@ const en = {
     clickOrDropRepo: 'Click to select, or drop a Git repository here',
     needGitRoot: 'Must be a repository root containing .git',
     checkoutToWorktree: 'Checkout to working tree',
+    checkoutToWorktreeN: 'Checkout to working tree ({{count}})',
     deleteToTrash: 'Move to trash',
+    deleteToTrashN: 'Move to trash ({{count}})',
+    deleteBatchConfirmTitle: 'Batch delete',
+    deleteBatchConfirmContent: 'Move the selected {{count}} items to the trash?',
     treeTab: 'Git Compare',
   },
   diff: {
@@ -165,6 +176,10 @@ const en = {
       'Skip directories with these names during folder compare (any depth, exact match).',
     ignoredDirsPlaceholder: 'e.g. .cache, build, coverage',
     deleteItem: 'Delete {{name}}',
+    finderIntegration: 'Finder integration',
+    finderQuickAction: 'Compare from Finder',
+    finderQuickActionDesc:
+      'Automatically installs a Finder Quick Action: select two files or folders in Finder, right-click → Quick Actions → Compare with Manta Compare. You may need to reopen Finder after the first install.',
   },
 } as const;
 

@@ -1,0 +1,3 @@
+/* Localization of the Finder Quick Action's Services-menu title.
+   Keys must match NSMenuItem.default in Info.plist. */
+"Compare with Manta Compare" = "Compare with Manta Compare";

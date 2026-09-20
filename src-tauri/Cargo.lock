@@ -2070,6 +2070,7 @@ dependencies = [
  "tauri-plugin-os",
  "tauri-plugin-store",
  "trash",
+ "url",
 ]
 
 [[package]]
