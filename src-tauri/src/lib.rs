@@ -8,6 +8,7 @@ use commands::folder::{copy_path, create_dir, diff_dirs, path_kind, rename_path,
 use commands::fs::{allow_watch_path, read_text_file, write_text_file};
 use commands::git::{git_checkout_file, git_diff_refs, git_repo_info, git_show};
 use open_with::take_pending_open_paths;
+#[cfg(target_os = "macos")]
 use tauri::menu::{AboutMetadata, Menu, PredefinedMenuItem, Submenu};
 use tauri::Manager;
 
@@ -170,9 +171,15 @@ pub fn run() {
         .expect("error while running tauri application")
         .run(|app, event| {
             // Files handed to the app by the system (Finder "Open With" / Quick
-            // Action / `open -a`) arrive here as file:// URLs.
+            // Action / `open -a`) arrive here as file:// URLs. `RunEvent::Opened`
+            // only exists on Apple platforms.
+            #[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
             if let tauri::RunEvent::Opened { urls } = event {
                 open_with::handle_opened(app, app.state(), urls);
+            }
+            #[cfg(not(any(target_os = "macos", target_os = "ios", target_os = "android")))]
+            {
+                let _ = (app, event);
             }
         });
 }
