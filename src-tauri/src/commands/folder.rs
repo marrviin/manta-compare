@@ -445,11 +445,20 @@ mod tests {
 
     #[test]
     fn normalize_line_applies_flags_independently() {
-        let ws = DiffOptions { ignore_whitespace: true, ignore_case: false };
+        let ws = DiffOptions {
+            ignore_whitespace: true,
+            ignore_case: false,
+        };
         assert_eq!(normalize_line("  a   b  ", ws), "a b");
-        let cs = DiffOptions { ignore_whitespace: false, ignore_case: true };
+        let cs = DiffOptions {
+            ignore_whitespace: false,
+            ignore_case: true,
+        };
         assert_eq!(normalize_line("Hello WORLD", cs), "hello world");
-        let both = DiffOptions { ignore_whitespace: true, ignore_case: true };
+        let both = DiffOptions {
+            ignore_whitespace: true,
+            ignore_case: true,
+        };
         assert_eq!(normalize_line("  A   B ", both), "a b");
         // Flags off: the line passes through untouched.
         assert_eq!(normalize_line("  A  b ", DiffOptions::default()), "  A  b ");
@@ -558,11 +567,16 @@ mod tests {
         let without = diff_dirs(left.clone(), right.clone(), None, None, None).unwrap();
         assert!(without.iter().all(|d| d.status == "modified"));
 
-        let ws =
-            diff_dirs(left.clone(), right.clone(), None, Some(true), None).unwrap();
+        let ws = diff_dirs(left.clone(), right.clone(), None, Some(true), None).unwrap();
         let case = diff_dirs(left.clone(), right, None, None, Some(true)).unwrap();
-        assert_eq!(ws.iter().find(|d| d.path == "ws.txt").unwrap().status, "equal");
-        assert_eq!(case.iter().find(|d| d.path == "case.txt").unwrap().status, "equal");
+        assert_eq!(
+            ws.iter().find(|d| d.path == "ws.txt").unwrap().status,
+            "equal"
+        );
+        assert_eq!(
+            case.iter().find(|d| d.path == "case.txt").unwrap().status,
+            "equal"
+        );
 
         fs::remove_dir_all(&l).unwrap();
         fs::remove_dir_all(&r).unwrap();
@@ -577,7 +591,14 @@ mod tests {
         assert_eq!(diffs.len(), 1);
         assert_eq!(diffs[0].status, "added");
 
-        assert!(diff_dirs(r.join("a.txt").to_string_lossy().to_string(), "/definitely/not/a/dir".into(), None, None, None).is_err());
+        assert!(diff_dirs(
+            r.join("a.txt").to_string_lossy().to_string(),
+            "/definitely/not/a/dir".into(),
+            None,
+            None,
+            None
+        )
+        .is_err());
 
         fs::remove_dir_all(&r).unwrap();
     }
@@ -587,7 +608,10 @@ mod tests {
         let root = temp_root("path-kind");
         fs::write(root.join("f.txt"), "x").unwrap();
         assert_eq!(path_kind(root.to_string_lossy().into()).unwrap(), "dir");
-        assert_eq!(path_kind(root.join("f.txt").to_string_lossy().into()).unwrap(), "file");
+        assert_eq!(
+            path_kind(root.join("f.txt").to_string_lossy().into()).unwrap(),
+            "file"
+        );
         assert_eq!(
             path_kind(root.join("nope.txt").to_string_lossy().into()).unwrap(),
             "missing"
