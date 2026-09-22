@@ -507,9 +507,13 @@ export function AppLayout() {
     let unlisten: (() => void) | undefined;
     let disposed = false;
     const consume = (paths: string[]) => {
-      if (paths.length > 0) void routeOpenPaths((to, options) => navRef.current(to, options), paths);
+      if (paths.length > 0)
+        void routeOpenPaths((to, options) => navRef.current(to, options), paths);
     };
-    const pull = () => invoke<string[]>('take_pending_open_paths').then(consume).catch(() => {});
+    const pull = () =>
+      invoke<string[]>('take_pending_open_paths')
+        .then(consume)
+        .catch(() => {});
     // Register the listener before the first pull: anything parked before this
     // point is drained by the pull below, anything after triggers the signal —
     // no window in between where a signal could fire without a listener.
