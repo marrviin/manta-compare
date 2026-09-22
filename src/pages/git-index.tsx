@@ -4,7 +4,8 @@
  *   - Each side has a column header: a ref dropdown (worktree / branch / commit) + refresh;
  *   - Both sides render the same diff records synthesized by git_diff_refs (DiffSideTable),
  *     sharing the expanded set + synced scrolling, with strictly aligned rows;
- *   - Clicking a file node present on a side opens it as a file tab (see useFileTabs
+ *   - Clicking a row selects it; double-clicking a file present on a side opens it as a file
+ *     tab and double-clicking a folder toggles its expansion (see useFileTabs
  *     on the owning page);
  *   - Supports auto-detecting a repo directory dropped onto the window.
  */
@@ -13,11 +14,17 @@ import cx from 'classnames';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
-import { Button, Empty, Select, Tooltip } from 'antd';
+import { Empty, Modal, Select, Tooltip } from 'antd';
 import { useTranslation } from 'react-i18next';
-import { FolderOpenOutlined, ReloadOutlined } from '@ant-design/icons';
+import { FolderOpenOutlined } from '@ant-design/icons';
 import { Side } from '../diff-view';
-import { DiffMenuAction, DiffSideTable, buildRecords, folderColumns } from '../diff-table';
+import {
+  DiffMenuAction,
+  DiffRecord,
+  DiffSideTable,
+  buildRecords,
+  folderColumns,
+} from '../diff-table';
 import { useScrollSync } from '../scroll-sync';
 import { useGit, WORKTREE, toRev } from './git-compare';
 
@@ -104,29 +111,48 @@ export function GitTreePane({ active }: { active: boolean }) {
     };
   }, [active, loadRepo, setError, t]);
 
-  // Check out this file from a side's ref into the working tree (git checkout <rev> -- <path>), then recompute the diff.
-  // Only available on the ref-snapshot side (the worktree side is already a disk file, so no checkout is needed).
-  async function checkoutFile(path: string, side: Side) {
-    if (!repo) return;
+  // Check out these files from a side's ref into the working tree (git checkout <rev> -- <path>),
+  // then recompute the diff once after the whole batch. Only available on the ref-snapshot side
+  // (the worktree side is already a disk file, so no checkout is needed).
+  async function checkoutFiles(nodes: DiffRecord[], side: Side) {
+    if (!repo || nodes.length === 0) return;
     const rev = side === 'left' ? from : to;
     if (!rev || rev === WORKTREE) return;
     setError('');
     try {
-      await invoke('git_checkout_file', { repo: repo.root, rev: toRev(rev), path });
+      for (const node of nodes) {
+        await invoke('git_checkout_file', { repo: repo.root, rev: toRev(rev), path: node.path });
+      }
       refresh();
     } catch (e) {
       setError(String(e));
     }
   }
 
-  // Move this working-tree file to the trash, then recompute the diff. Only available on the worktree side.
-  async function deleteFile(path: string, side: Side) {
-    if (!repo) return;
+  // Move these working-tree files to the trash, then recompute the diff. Only available on the
+  // worktree side. A batch (>1) confirms first; a single entry keeps the old no-confirm behavior.
+  async function deleteFiles(nodes: DiffRecord[], side: Side) {
+    if (!repo || nodes.length === 0) return;
     const rev = side === 'left' ? from : to;
     if (rev !== WORKTREE) return;
+    if (nodes.length > 1) {
+      const confirmed = await new Promise<boolean>((resolve) => {
+        Modal.confirm({
+          title: t('deleteBatchConfirmTitle'),
+          content: t('deleteBatchConfirmContent', { count: nodes.length }),
+          okText: t('common:confirm'),
+          cancelText: t('common:cancel'),
+          onOk: () => resolve(true),
+          onCancel: () => resolve(false),
+        });
+      });
+      if (!confirmed) return;
+    }
     setError('');
     try {
-      await invoke('trash_path', { path: `${repo.root}/${path}` });
+      for (const node of nodes) {
+        await invoke('trash_path', { path: `${repo.root}/${node.path}` });
+      }
       refresh();
     } catch (e) {
       setError(String(e));
@@ -134,23 +160,25 @@ export function GitTreePane({ active }: { active: boolean }) {
   }
 
   // Context menu: check out to working tree (ref-snapshot side) + move to trash (worktree side).
+  // With a multi-selection the labels show the affected count and the actions run over the whole batch.
   const menuActions = useMemo<DiffMenuAction[]>(
     () => [
       {
         key: 'checkout',
-        label: t('checkoutToWorktree'),
+        label: (_s, count) =>
+          count > 1 ? t('checkoutToWorktreeN', { count }) : t('checkoutToWorktree'),
         enabled: (_node, side) => (side === 'left' ? from : to) !== WORKTREE,
-        onClick: (node, side) => void checkoutFile(node.path, side),
+        onClick: (nodes, side) => void checkoutFiles(nodes, side),
       },
       {
         key: 'delete',
-        label: t('deleteToTrash'),
+        label: (_s, count) => (count > 1 ? t('deleteToTrashN', { count }) : t('deleteToTrash')),
         danger: true,
         enabled: (_node, side) => (side === 'left' ? from : to) === WORKTREE,
-        onClick: (node, side) => void deleteFile(node.path, side),
+        onClick: (nodes, side) => void deleteFiles(nodes, side),
       },
     ],
-    // checkoutFile / deleteFile depend on repo/from/to, so rebuild when those change; t for language switch.
+    // checkoutFiles / deleteFiles depend on repo/from/to, so rebuild when those change; t for language switch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [repo, from, to, t],
   );
@@ -219,16 +247,6 @@ export function GitTreePane({ active }: { active: boolean }) {
         popupMatchSelectWidth={420}
         optionFilterProp="label"
       />
-      <Tooltip title={t('common:refresh')}>
-        <Button
-          type="text"
-          size="small"
-          className="flex-none shrink-0"
-          icon={<ReloadOutlined />}
-          disabled={!repo || !from}
-          onClick={refresh}
-        />
-      </Tooltip>
     </div>
   );
 

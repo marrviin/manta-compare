@@ -166,7 +166,11 @@ export function TextComparePage() {
   // while the unselected side's column header can still pick or drop a file.
   const leftOk = !!left && !left.meta.is_binary && !left.meta.truncated;
   const rightOk = !!right && !right.meta.is_binary && !right.meta.truncated;
-  const canDiff = (leftOk || rightOk) && !(left && !leftOk) && !(right && !rightOk);
+  // With no file picked on either side, still enter the diff view: both sides start as empty,
+  // editable Monaco panes so the user can type or paste content to compare directly. The empty
+  // pick state only appears when a loaded file blocks diffing (binary / oversized).
+  const canDiff =
+    (leftOk || rightOk || (!left && !right)) && !(left && !leftOk) && !(right && !rightOk);
 
   // Record history when both sides are selected and readable — covers the case of picking each file separately.
   useEffect(() => {
@@ -315,11 +319,17 @@ export function TextComparePage() {
                 <Divider vertical className="mx-0.5" />
               </>
             )}
-            {(left || right) && (
-              <Tooltip title={t('common:refresh')}>
-                <Button type="text" size="small" icon={<ReloadOutlined />} onClick={reloadAll} />
-              </Tooltip>
-            )}
+            {/* Refresh stays visible even with no file loaded, just disabled — keeps the
+                header button row from shifting when the first file gets picked. */}
+            <Tooltip title={t('common:refresh')}>
+              <Button
+                type="text"
+                size="small"
+                icon={<ReloadOutlined />}
+                disabled={!left && !right}
+                onClick={reloadAll}
+              />
+            </Tooltip>
           </Space>
         }
       />

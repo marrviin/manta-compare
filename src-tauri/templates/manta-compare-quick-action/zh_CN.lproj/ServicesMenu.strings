@@ -1,0 +1,2 @@
+/* 本地化 Finder 快速操作在服务菜单中的名称。键须与 Info.plist 的 NSMenuItem.default 一致。 */
+"Compare with Manta Compare" = "用 Manta Compare 对比";

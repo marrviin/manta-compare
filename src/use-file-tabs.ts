@@ -40,6 +40,12 @@ export interface FileTabsApi {
   /** Close every file tab (context menu). Confirms when any is dirty. */
   closeAll: () => void;
   /**
+   * Retarget a tab after its file was renamed on disk (folder-compare context
+   * menu): swap the tab's path, keeping it active. Confirms when the tab is
+   * dirty (the pane remounts, so unsaved edits would be lost).
+   */
+  renameTab: (from: string, to: string) => void;
+  /**
    * Called before a new diff: confirm-discard when any tab is dirty, then clear
    * all tabs and activate the tree tab. Resolves false when the user cancelled
    * (the caller aborts the directory/ref change so edits are never silently lost).
@@ -160,6 +166,23 @@ export function useFileTabs({
     }
   }, [tabs, activePath, settings.confirmOnUnsaved, t, activate]);
 
+  const renameTab = useCallback(
+    (from: string, to: string) => {
+      const doRename = () => {
+        const idx = tabs.indexOf(from);
+        if (idx === -1) return;
+        setTabs(tabs.map((p) => (p === from ? to : p)));
+        if (activePath === from) activate(to);
+      };
+      if (isDirtyRef.current(from) && settings.confirmOnUnsaved) {
+        confirmDiscardModal(t, doRename);
+      } else {
+        doRename();
+      }
+    },
+    [tabs, activePath, settings.confirmOnUnsaved, t, activate],
+  );
+
   const resetForNewDiff = useCallback(async () => {
     const anyDirty = tabs.some((p) => isDirtyRef.current(p));
     if (anyDirty && settings.confirmOnUnsaved) {
@@ -205,5 +228,15 @@ export function useFileTabs({
     return () => window.removeEventListener('keydown', onKey, { capture: true });
   }, [tabs, activePath, activate]);
 
-  return { tabs, activePath, openFile, activate, closeTab, closeOthers, closeAll, resetForNewDiff };
+  return {
+    tabs,
+    activePath,
+    openFile,
+    activate,
+    closeTab,
+    closeOthers,
+    closeAll,
+    renameTab,
+    resetForNewDiff,
+  };
 }

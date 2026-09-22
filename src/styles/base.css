@@ -29,6 +29,43 @@ body,
    * a window edge that pre-adjustment position overflows the viewport and flashes
    * document-level scrollbars. Lock the root so the document can never scroll. */
   overflow: hidden;
+  /* Prevent text selection when pressing Cmd+A inside the app — only input/textarea
+   * elements and code editor panes should allow text selection. */
+  user-select: none;
+}
+
+/* ── App-wide text-selection lock ─────────────────────────────────────────────
+ * A rule on html/body alone is NOT enough in WKWebView: descendants resolving
+ * `user-select: auto` (and styles antd injects) stay drag-selectable, so
+ * long-press + drag still highlights text all over the app. Force `none` on
+ * every element (unlayered, so this outranks antd's cssinjs output), then
+ * re-enable selection only for editable surfaces: inputs, textareas,
+ * contenteditable hosts and Monaco's editor DOM (which manages its own
+ * selection overlay and hidden input). */
+body,
+body * {
+  -webkit-user-select: none; /* stylelint-disable-line property-no-vendor-prefix */
+  user-select: none;
+}
+
+input,
+textarea,
+[contenteditable='true'],
+.monaco-editor,
+.monaco-editor * {
+  -webkit-user-select: text; /* stylelint-disable-line property-no-vendor-prefix */
+  user-select: text;
+}
+
+/* Belt-and-braces for WKWebView: if a selection ever leaks past the lock above
+ * (WebKit quirks around drag gestures), make it invisible. Inputs keep a visible
+ * accent selection so editing still reads naturally. */
+*::selection {
+  background: transparent;
+}
+input::selection,
+textarea::selection {
+  background: color-mix(in srgb, var(--color-accent, #3768fa) 25%, transparent);
 }
 
 body {

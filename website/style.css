@@ -964,6 +964,124 @@ h2 {
   font-size: 13.5px;
 }
 
+/* ---------- Blog ---------- */
+
+.post-list {
+  max-width: 720px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.post-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  background: var(--surface);
+  transition:
+    border-color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.post-card:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+}
+
+.post-date {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--faint);
+}
+
+.post-card h3 {
+  margin-top: 8px;
+  font-size: 17.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+}
+
+.post-card p {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.post-card .read-more {
+  margin-top: 14px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--accent);
+}
+
+.post-card:hover .read-more {
+  text-decoration: underline;
+}
+
+.post-meta {
+  margin-top: 12px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--faint);
+}
+
+.post-body {
+  /* doc-body has no paragraph rhythm (docs are list-driven); posts need one */
+  max-width: 720px;
+}
+
+.post-body p {
+  margin: 14px 0;
+}
+
+.post-body h3 {
+  margin: 36px 0 10px;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.post-body ul {
+  margin: 14px 0;
+}
+
+.post-body pre {
+  margin: 18px 0;
+  padding: 14px 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow-x: auto;
+  line-height: 1.65;
+}
+
+.post-body pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 12.5px;
+}
+
+.post-body blockquote {
+  margin: 16px 0;
+  padding-left: 16px;
+  border-left: 2px solid var(--accent);
+  color: var(--muted);
+}
+
+.post-body img {
+  margin: 18px 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.post-body a:hover {
+  text-decoration: underline;
+}
+
 @media (max-width: 960px) {
   .doc-grid {
     grid-template-columns: 1fr;

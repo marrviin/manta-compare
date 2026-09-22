@@ -271,7 +271,7 @@
 }
 .diff-side-table .ant-table-row.diff-row-selected > td,
 .diff-side-table .ant-table-row.diff-row-selected .ant-table-cell {
-  background: var(--color-accent-bg, rgba(64, 128, 255, 0.14));
+  background: var(--color-accent-bg-strong, rgba(64, 128, 255, 0.28));
 }
 
 /* ── Frosted-glass settings modal ─────────────────────────────────────────────
@@ -280,13 +280,9 @@
    material can't apply to DOM overlays. Pairs with --pc-glass-bg in tokens.css;
    SettingsShell's root/nav keep no background so the glass reads through.
    The glass lives on a ::before layer INSIDE the container (not on the
-   container itself): the title strip (.pc-settings-header) frosts content by
-   re-blurring with its own backdrop-filter, and a nested backdrop-filter can
-   only sample in-panel paint — with the glass on the container (the strip's
-   backdrop root) the strip would never see it, forcing either a tint band at
-   rest or an unwhitened, see-through frost over scrolled rows. As an in-panel
-   layer the ::before IS part of the strip's backdrop sample, so the strip's
-   frost reads exactly like the glass. z-index:-1 keeps it behind the shell
+   container itself): the title strip (.pc-settings-header) is a sibling in the
+   shell's flex column, and as an in-panel layer the ::before stays part of the
+   same stacking context, so the strip reads identical to the glass. z-index:-1 keeps it behind the shell
    content; isolation keeps it from sinking behind ancestors outside the panel.
    The open animation must therefore stay transform-free (transitionName
    'pc-modal-fade', motion CSS below): a blur layer inside a transformed or
@@ -294,6 +290,14 @@
    in afterwards — the zoom motion showed exactly that flash on open. */
 .pc-glass-modal .ant-modal-container {
   isolation: isolate;
+}
+/* Inside the glass panel, `bg-surface` rows (settings switch rows, rule list
+ * items) would paint the opaque --ant-color-bg-container, which is nearly
+ * identical to the glass behind them — the cards vanish. Re-bridge the token
+ * to antd's translucent fill so the cards read as raised rows over the glass,
+ * composing with it in both themes. */
+.pc-glass-modal {
+  --color-surface: var(--ant-color-fill-tertiary, rgba(0, 0, 0, 0.04));
 }
 .pc-glass-modal .ant-modal-container::before {
   content: '';

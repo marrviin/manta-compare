@@ -1,6 +1,6 @@
 [package]
 name = "manta-compare"
-version = "0.4.0"
+version = "0.4.1"
 description = "A cross-platform file, folder and git diff comparison tool"
 authors = ["marrviin"]
 license = "MIT"
@@ -31,3 +31,4 @@ trash = "5"
 tauri-plugin-fs = "2.5.2"
 tauri-plugin-store = "2.4.4"
 tauri-plugin-os = "2"
+url = "2"

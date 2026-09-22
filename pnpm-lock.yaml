@@ -93,6 +93,9 @@ importers:
       globals:
         specifier: ^17.11.0
         version: 17.11.0
+      marked:
+        specifier: ^18.0.13
+        version: 18.0.13
       material-icon-theme:
         specifier: ^5.38.1
         version: 5.38.1
@@ -1925,6 +1928,11 @@ packages:
   marked@14.0.0:
     resolution: {integrity: sha512-uIj4+faQ+MgHgwUW1l2PsPglZLOLOT1uErt06dAPtx2kjteLAkbsd/0FiYg/MGS+i7ZKLb7w2WClxHkzOOuryQ==}
     engines: {node: '>= 18'}
+    hasBin: true
+
+  marked@18.0.13:
+    resolution: {integrity: sha512-xTxVzZsBFwunP6HDmtBkabUQEYArnP7/rMDGmPj9SlrKlQ4i8MdYVow+nJL0eOqwpUqhzBoTBRADGN6uYwPyOw==}
+    engines: {node: '>= 20'}
     hasBin: true
 
   material-icon-theme@5.38.1:
@@ -4164,6 +4172,8 @@ snapshots:
       '@jridgewell/sourcemap-codec': 1.6.0
 
   marked@14.0.0: {}
+
+  marked@18.0.13: {}
 
   material-icon-theme@5.38.1:
     dependencies:

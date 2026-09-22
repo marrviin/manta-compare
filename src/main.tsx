@@ -5,6 +5,24 @@ import { prewarmDiffWorker } from './monaco-prewarm';
 import './i18n';
 import './styles.css';
 
+// Block the native Cmd+A / Ctrl+A "Select All" editing command outside editable
+// contexts. The CSS `user-select: none` on the root only stops mouse-drag selection —
+// WKWebView's Select All command ignores it (known WebKit behavior) and would still
+// highlight every piece of text in the app. Intercepting the keydown is the reliable
+// fix; editable surfaces (inputs, textareas, contenteditable, Monaco's hidden input)
+// keep their native select-all so copy/edit flows are unaffected.
+document.addEventListener(
+  'keydown',
+  (e) => {
+    if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'a') return;
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('input, textarea, [contenteditable="true"], [contenteditable=""], .monaco-editor'))
+      return;
+    e.preventDefault();
+  },
+  true,
+);
+
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
     <App />

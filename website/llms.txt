@@ -9,7 +9,7 @@
 - Platforms: macOS (.dmg, Apple Silicon + Intel), Windows (.msi / .exe), Linux (.AppImage / .deb)
 - License: MIT, open source, no telemetry, no account required
 - Core engines: Tauri 2 (Rust), React, Monaco editor (VS Code's editor)
-- Current version: 0.2.0 (2026-09-12)
+- Current version: 0.4.0 (2026-09-14)
 - Download: https://github.com/marrviin/manta-compare/releases/latest
 - Source code: https://github.com/marrviin/manta-compare
 - Website (English): https://marrviin.github.io/manta-compare/
@@ -38,3 +38,7 @@
 - [使用文档](https://marrviin.github.io/manta-compare/docs.zh.html): 安装指引、安装问题排查、功能说明、常见问题
 - [Changelog](https://marrviin.github.io/manta-compare/changelog.html): release notes per version
 - [更新日志](https://marrviin.github.io/manta-compare/changelog.zh.html): 每个版本的变更记录
+- [Blog](https://marrviin.github.io/manta-compare/blog.html): stories and technical write-ups from building Manta Compare
+- [博客（简体中文）](https://marrviin.github.io/manta-compare/blog.zh.html): 开发故事与技术分享文章
+- [I spent three weeks building a very ordinary diff tool](https://marrviin.github.io/manta-compare/blog/building-manta-compare.html): the full pipeline from idea to users' hands — design decisions, vibe coding practice, and release discipline
+- [我花三周做了个很普通的 diff 工具，但我想聊聊它的整个链路](https://marrviin.github.io/manta-compare/blog/building-manta-compare.zh.html): 选题、设计、vibe coding 实战、发布与传播的完整链路复盘

@@ -68,6 +68,8 @@ export interface FolderContext extends ShellContext {
   setExpandedKeys: (keys: string[]) => void;
   /** Recompute the diff for the two currently-picked directories. */
   refresh: () => Promise<void>;
+  /** Retarget a tab after its file was renamed on disk (context-menu rename). */
+  renameTab: (from: string, to: string) => void;
 }
 
 const FolderCtx = createContext<FolderContext | null>(null);
@@ -118,8 +120,17 @@ export function FolderComparePage() {
     basePath: '/folder-compare',
     isDirty: (p) => !!dirtyMap[p],
   });
-  const { tabs, activePath, openFile, activate, closeTab, closeOthers, closeAll, resetForNewDiff } =
-    tabsApi;
+  const {
+    tabs,
+    activePath,
+    openFile,
+    activate,
+    closeTab,
+    closeOthers,
+    closeAll,
+    renameTab,
+    resetForNewDiff,
+  } = tabsApi;
 
   // Route-leave guard, hoisted to the page: fires when leaving /folder-compare
   // with any dirty tab (search-only tab switches never hit the pathname check).
@@ -282,6 +293,7 @@ export function FolderComparePage() {
       expandedKeys,
       setExpandedKeys,
       refresh,
+      renameTab,
     }),
     [
       shell,
@@ -296,6 +308,7 @@ export function FolderComparePage() {
       setDirs,
       expandedKeys,
       refresh,
+      renameTab,
     ],
   );
 
@@ -346,13 +359,28 @@ export function FolderComparePage() {
                   <Divider vertical className="mx-0.5" />
                 </>
               )}
-              {activeActions?.hasFile && (
+              {/* Refresh lives in the header for both tab kinds: on a file tab it reloads that
+                  file pair; on the tree tab it recomputes the directory diff (always visible,
+                  disabled with nothing picked — mirrors text-compare). */}
+              {activeActions ? (
+                activeActions.hasFile && (
+                  <Tooltip title={t('common:refresh')}>
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<ReloadOutlined />}
+                      onClick={() => activeActions.reload()}
+                    />
+                  </Tooltip>
+                )
+              ) : (
                 <Tooltip title={t('common:refresh')}>
                   <Button
                     type="text"
                     size="small"
                     icon={<ReloadOutlined />}
-                    onClick={() => activeActions.reload()}
+                    disabled={!leftDir && !rightDir}
+                    onClick={() => void refresh()}
                   />
                 </Tooltip>
               )}

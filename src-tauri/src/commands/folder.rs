@@ -388,3 +388,242 @@ pub fn path_kind(path: String) -> Result<String, String> {
         Err(_) => Ok("missing".to_string()),
     }
 }
+
+/// Rename (move within the same filesystem) a file or directory. Used by the
+/// folder-compare context menu's "rename" action; refuses to clobber a
+/// different existing target. Case-only renames on case-insensitive filesystems
+/// (macOS default) still pass: src and dst then canonicalize to the same file.
+#[tauri::command]
+pub fn rename_path(src: String, dst: String) -> Result<(), String> {
+    let src_path = Path::new(&src);
+    let dst_path = Path::new(&dst);
+    if !src_path.exists() {
+        return Err(format!("Source does not exist: {src}"));
+    }
+    if dst_path.exists() {
+        let same = match (fs::canonicalize(src_path), fs::canonicalize(dst_path)) {
+            (Ok(a), Ok(b)) => a == b,
+            _ => false,
+        };
+        if !same {
+            return Err(format!("Target already exists: {dst}"));
+        }
+    }
+    fs::rename(src_path, dst_path).map_err(|e| format!("Failed to rename {src}: {e}"))
+}
+
+/// Create a single directory (its parent must already exist). Used by the
+/// folder-compare context menu's "new folder" action.
+#[tauri::command]
+pub fn create_dir(path: String) -> Result<(), String> {
+    let p = Path::new(&path);
+    if p.exists() {
+        return Err(format!("Path already exists: {path}"));
+    }
+    fs::create_dir(p).map_err(|e| format!("Failed to create dir {path}: {e}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    /// Per-test temp workspace under the OS temp dir; caller removes it when done.
+    fn temp_root(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "manta-compare-test-{}-{}-{tag}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn normalize_line_applies_flags_independently() {
+        let ws = DiffOptions { ignore_whitespace: true, ignore_case: false };
+        assert_eq!(normalize_line("  a   b  ", ws), "a b");
+        let cs = DiffOptions { ignore_whitespace: false, ignore_case: true };
+        assert_eq!(normalize_line("Hello WORLD", cs), "hello world");
+        let both = DiffOptions { ignore_whitespace: true, ignore_case: true };
+        assert_eq!(normalize_line("  A   B ", both), "a b");
+        // Flags off: the line passes through untouched.
+        assert_eq!(normalize_line("  A  b ", DiffOptions::default()), "  A  b ");
+    }
+
+    #[test]
+    fn walk_prunes_ignored_dirs_and_keys_by_forward_slash() {
+        let root = temp_root("walk");
+        fs::create_dir_all(root.join("sub/deep/node_modules")).unwrap();
+        fs::create_dir_all(root.join("sub/deep/keep")).unwrap();
+        fs::write(root.join("a.txt"), "abc").unwrap();
+        fs::write(root.join("sub/deep/keep/b.txt"), "b").unwrap();
+        fs::write(root.join("sub/deep/node_modules/x.txt"), "x").unwrap();
+
+        let ignored = vec!["node_modules".to_string()];
+        let mut out = BTreeMap::new();
+        walk(&root, &root, &ignored, &mut out);
+
+        let keys: Vec<&String> = out.keys().collect();
+        assert!(keys.contains(&&"a.txt".to_string()));
+        assert!(keys.contains(&&"sub/deep/keep/b.txt".to_string()));
+        // Intermediate directories are recorded so unions see tree adds/removes.
+        assert!(out.get("sub").unwrap().is_dir);
+        assert!(out.get("sub/deep").unwrap().is_dir);
+        // Ignored pruned at any depth; relative keys use forward slashes.
+        assert!(!keys.iter().any(|k| k.contains("node_modules")));
+        assert_eq!(out.get("a.txt").unwrap().size, 3);
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn diff_dirs_reports_added_removed_modified_equal() {
+        let l = temp_root("diff-l");
+        let r = temp_root("diff-r");
+        fs::create_dir_all(l.join("shared")).unwrap();
+        fs::create_dir_all(r.join("shared")).unwrap();
+        fs::write(l.join("shared/same.txt"), "same").unwrap();
+        fs::write(r.join("shared/same.txt"), "same").unwrap();
+        fs::write(l.join("mod.txt"), "one").unwrap();
+        fs::write(r.join("mod.txt"), "two").unwrap();
+        fs::write(l.join("gone.txt"), "x").unwrap();
+        fs::write(r.join("new.txt"), "y").unwrap();
+
+        let diffs = diff_dirs(
+            l.to_string_lossy().into(),
+            r.to_string_lossy().into(),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+        let get = |p: &str| diffs.iter().find(|d| d.path == p).unwrap();
+        assert_eq!(get("mod.txt").status, "modified");
+        assert_eq!(get("gone.txt").status, "removed");
+        assert_eq!(get("new.txt").status, "added");
+        assert_eq!(get("shared/same.txt").status, "equal");
+        // Shared directories carry equal status + sizes nulled out.
+        let shared = get("shared");
+        assert!(shared.is_dir);
+        assert_eq!(shared.status, "equal");
+        assert_eq!(shared.left_size, None);
+        assert_eq!(get("mod.txt").left_size, Some(3));
+
+        fs::remove_dir_all(&l).unwrap();
+        fs::remove_dir_all(&r).unwrap();
+    }
+
+    #[test]
+    fn diff_dirs_prunes_default_ignored_dirs_when_list_is_none_or_empty() {
+        let l = temp_root("default-ignore-l");
+        let r = temp_root("default-ignore-r");
+        for root in [&l, &r] {
+            fs::create_dir_all(root.join("node_modules/pkg")).unwrap();
+            fs::write(root.join("node_modules/pkg/index.js"), "x").unwrap();
+            fs::write(root.join("keep.txt"), "k").unwrap();
+        }
+        for ignore_dirs in [None, Some(Vec::new())] {
+            let diffs = diff_dirs(
+                l.to_string_lossy().into(),
+                r.to_string_lossy().into(),
+                ignore_dirs,
+                None,
+                None,
+            )
+            .unwrap();
+            assert_eq!(diffs.len(), 1, "only keep.txt survives");
+            assert_eq!(diffs[0].path, "keep.txt");
+        }
+        fs::remove_dir_all(&l).unwrap();
+        fs::remove_dir_all(&r).unwrap();
+    }
+
+    #[test]
+    fn diff_dirs_ignore_flags_make_normalized_files_equal() {
+        let l = temp_root("flags-l");
+        let r = temp_root("flags-r");
+        // Whitespace-only diff with different sizes: fast byte path says unequal.
+        fs::write(l.join("ws.txt"), "a  b").unwrap();
+        fs::write(r.join("ws.txt"), "a b").unwrap();
+        // Case-only diff, same size: byte path says unequal too.
+        fs::write(l.join("case.txt"), "Hello").unwrap();
+        fs::write(r.join("case.txt"), "hello").unwrap();
+
+        let left: String = l.to_string_lossy().into();
+        let right: String = r.to_string_lossy().into();
+        let without = diff_dirs(left.clone(), right.clone(), None, None, None).unwrap();
+        assert!(without.iter().all(|d| d.status == "modified"));
+
+        let ws =
+            diff_dirs(left.clone(), right.clone(), None, Some(true), None).unwrap();
+        let case = diff_dirs(left.clone(), right, None, None, Some(true)).unwrap();
+        assert_eq!(ws.iter().find(|d| d.path == "ws.txt").unwrap().status, "equal");
+        assert_eq!(case.iter().find(|d| d.path == "case.txt").unwrap().status, "equal");
+
+        fs::remove_dir_all(&l).unwrap();
+        fs::remove_dir_all(&r).unwrap();
+    }
+
+    #[test]
+    fn diff_dirs_empty_side_means_pure_add_remove_and_non_dir_errors() {
+        let r = temp_root("one-side");
+        fs::write(r.join("a.txt"), "a").unwrap();
+
+        let diffs = diff_dirs(String::new(), r.to_string_lossy().into(), None, None, None).unwrap();
+        assert_eq!(diffs.len(), 1);
+        assert_eq!(diffs[0].status, "added");
+
+        assert!(diff_dirs(r.join("a.txt").to_string_lossy().to_string(), "/definitely/not/a/dir".into(), None, None, None).is_err());
+
+        fs::remove_dir_all(&r).unwrap();
+    }
+
+    #[test]
+    fn path_kind_classifies_dir_file_missing() {
+        let root = temp_root("path-kind");
+        fs::write(root.join("f.txt"), "x").unwrap();
+        assert_eq!(path_kind(root.to_string_lossy().into()).unwrap(), "dir");
+        assert_eq!(path_kind(root.join("f.txt").to_string_lossy().into()).unwrap(), "file");
+        assert_eq!(
+            path_kind(root.join("nope.txt").to_string_lossy().into()).unwrap(),
+            "missing"
+        );
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn create_dir_and_rename_path_basics() {
+        let root = temp_root("create-rename");
+        // Parent must exist for the single-level create_dir.
+        assert!(create_dir(root.join("sub/new").to_string_lossy().into()).is_err());
+        fs::create_dir_all(root.join("sub")).unwrap();
+        let sub = root.join("sub");
+        create_dir(sub.join("new").to_string_lossy().into()).unwrap();
+        assert!(sub.join("new").is_dir());
+        // Creating over an existing path fails.
+        assert!(create_dir(sub.join("new").to_string_lossy().into()).is_err());
+
+        fs::write(sub.join("new/a.txt"), "x").unwrap();
+        let a = sub.join("new/a.txt").to_string_lossy().to_string();
+        let b = sub.join("new/b.txt").to_string_lossy().to_string();
+        rename_path(a.clone(), b.clone()).unwrap();
+        assert!(sub.join("new/b.txt").is_file());
+        assert!(!sub.join("new/a.txt").exists());
+        // Renaming onto a different existing target is refused.
+        fs::write(sub.join("new/other.txt"), "y").unwrap();
+        let other = sub.join("new/other.txt").to_string_lossy().to_string();
+        assert!(rename_path(b.clone(), other).is_err());
+        // Case-only rename still works (same file on case-insensitive fs; plain
+        // rename on case-sensitive ones since the target doesn't exist).
+        let b_upper = sub.join("new/B.txt").to_string_lossy().to_string();
+        rename_path(b, b_upper).unwrap();
+        assert!(sub.join("new/B.txt").is_file());
+        // Missing source errors.
+        assert!(rename_path(sub.join("new/gone.txt").to_string_lossy().into(), a).is_err());
+        fs::remove_dir_all(&root).unwrap();
+    }
+}

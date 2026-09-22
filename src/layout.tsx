@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { Outlet, useLocation, useNavigate, useOutletContext } from 'react-router-dom';
-import { App as AntdApp, ConfigProvider, Dropdown, Empty, Menu, Segmented } from 'antd';
+import { App as AntdApp, ConfigProvider, Dropdown, Menu, Segmented } from 'antd';
 import type { MenuProps } from 'antd';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
@@ -39,7 +39,10 @@ import { materialIconUrl, materialIconUrlByName } from './material-icons';
 import { SettingsModal } from './pages/settings/settings-modal';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { getVersion } from '@tauri-apps/api/app';
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { isMac } from './platform';
+import { routeOpenPaths } from './openWith';
 
 /** Sidebar fixed icons are all rendered as material-icon-theme colored svgs. */
 function MaterialNavIcon({ name }: { name: string }) {
@@ -398,25 +401,20 @@ function RecentPanel({
           {/* Divider between the action area and the recent list. */}
           <div className="mx-2 my-1 h-px shrink-0 bg-split" />
           <div className="shrink-0 px-4 pt-1 pb-1 text-[12px] text-muted">{t('recentCompare')}</div>
-          {recent?.length === 0 ? (
-            <div className="flex items-center justify-center px-2.5 py-6">
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={false} />
-            </div>
-          ) : (
-            <ConfigProvider theme={menuSkinTheme}>
-              <Menu
-                mode="inline"
-                items={recentItems}
-                className="pc-menu-skin flex-1 min-h-0 overflow-auto px-2 pb-2 pt-0"
-                selectedKeys={[]}
-                onClick={({ key }) => {
-                  // Key lookup must go through entryKey — it's both the item key and the dedupe identity.
-                  const entry = recent.find((e) => entryKey(e) === key);
-                  if (entry) openEntry(entry);
-                }}
-              />
-            </ConfigProvider>
-          )}
+          {/* Empty list renders nothing: the Menu simply shows no items (no Empty placeholder). */}
+          <ConfigProvider theme={menuSkinTheme}>
+            <Menu
+              mode="inline"
+              items={recentItems}
+              className="pc-menu-skin flex-1 min-h-0 overflow-auto px-2 pb-2 pt-0"
+              selectedKeys={[]}
+              onClick={({ key }) => {
+                // Key lookup must go through entryKey — it's both the item key and the dedupe identity.
+                const entry = recent.find((e) => entryKey(e) === key);
+                if (entry) openEntry(entry);
+              }}
+            />
+          </ConfigProvider>
           {/* Fixed entry at the bottom (mt-auto pushes it to the bottom, always visible).
               Opens a dropdown with a quick theme switch (Segmented on the row's right) and the settings modal entry. */}
           <div className="mt-auto shrink-0 px-2 py-2">
@@ -471,10 +469,68 @@ function RecentPanel({
 export function AppLayout() {
   // Error toasts come from antd's App context so they inherit the configured theme.
   const { message } = AntdApp.useApp();
+  const navigate = useNavigate();
+  const { settings, loaded } = useSettings();
   const [recent, setRecent] = useState<HistoryEntry[]>(() => loadHistory());
   const [siderCollapsed, setSiderCollapsed] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsPane, setSettingsPane] = useState('general');
+  // routeOpenPaths reads navigate through a ref so this effect can run once.
+  const navRef = useRef(navigate);
+  navRef.current = navigate;
+
+  // macOS Finder Quick Action auto-sync: keep the installed workflow in step with
+  // the settings toggle (default on), so the right-click menu works out of the box
+  // without a manual install step. Idempotent: only touches the filesystem on change.
+  useEffect(() => {
+    if (!isMac || !loaded) return;
+    void (async () => {
+      try {
+        const installed = await invoke<boolean>('finder_quick_action_installed');
+        if (settings.finderQuickAction && !installed) {
+          await invoke('finder_quick_action_install');
+        } else if (!settings.finderQuickAction && installed) {
+          await invoke('finder_quick_action_uninstall');
+        }
+      } catch {
+        // Best-effort: an unregistered menu item must not break the app.
+      }
+    })();
+  }, [loaded, settings.finderQuickAction]);
+
+  // External open-file intake (macOS): the Rust side parks paths handed over by
+  // Finder ("Open With" / Quick Action) and signals `open://paths`; here we pull
+  // the parked paths and route them like a home-screen drop. The startup pull
+  // covers paths that arrived before the webview mounted (fresh launch).
+  useEffect(() => {
+    if (!isMac) return;
+    let unlisten: (() => void) | undefined;
+    let disposed = false;
+    const consume = (paths: string[]) => {
+      if (paths.length > 0) void routeOpenPaths((to, options) => navRef.current(to, options), paths);
+    };
+    const pull = () => invoke<string[]>('take_pending_open_paths').then(consume).catch(() => {});
+    // Register the listener before the first pull: anything parked before this
+    // point is drained by the pull below, anything after triggers the signal —
+    // no window in between where a signal could fire without a listener.
+    listen('open://paths', pull)
+      .then((fn) => {
+        if (disposed) {
+          fn();
+          return;
+        }
+        unlisten = fn;
+        // Startup pull covers paths that arrived before the webview mounted.
+        void pull();
+      })
+      .catch(() => {});
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+    // routeOpenPaths only reads navigate (stable); re-runs would duplicate listeners.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Errors surface as a transient toast instead of a banner; the '' calls
   // scattered through the pages ("clear previous error") become a no-op.

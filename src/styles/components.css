@@ -155,20 +155,11 @@
   z-index: -1;
 }
 
-/* ── Settings modal: frosted title strip (macOS Settings style) ───────────────
-   The strip frosts whatever scrolls beneath it via its own backdrop-filter,
-   nested inside the modal panel's glass (.pc-glass-modal in styles/antd.css).
-   The panel's glass lives on the container's ::before (see antd.css), so the
-   strip's backdrop sample includes the glass — its frost over scrolled rows is
-   whitened exactly like the panel, and with a transparent background the strip
-   is invisible at rest (identical color to the panel, no tint band). Blur
-   parameters MUST match the ::before glass exactly (28px / 1.6): any mismatch
-   shows as a banded rectangle against the panel. pointer-events-none (set in
+/* ── Settings modal: fixed title strip (macOS Settings style) ─────────────────
+   A plain static strip at the top of the right pane; the content scrolls in its
+   own area BELOW the strip, so no backdrop-filter is needed here (nothing ever
+   paints beneath it except the panel's glass). pointer-events-none (set in
    JSX) so clicks fall through to the Modal close button underneath. */
 .pc-settings-header {
-  backdrop-filter: blur(28px) saturate(1.6);
-  /* The prefix is required: the app runs in WKWebView (Tauri macOS), where
-   * backdrop-filter is only supported with -webkit-. */
-  -webkit-backdrop-filter: blur(28px) saturate(1.6); /* stylelint-disable-line property-no-vendor-prefix */
   box-shadow: inset 0 -1px 0 var(--color-split);
 }

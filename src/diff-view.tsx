@@ -181,7 +181,6 @@ function DiffPanelInner(
           'min-w-0 flex items-center gap-1 pl-3 pr-2 py-0.5 text-xs border-r border-line last:border-r-0',
           hoverSide === side && 'bg-accent-bg',
           file ? 'text-fg' : 'text-muted',
-          onPick && 'hover:bg-accent-bg',
         )}
         style={{ flex: `${side === 'left' ? leftRatio : 1 - leftRatio} 0 0` }}
       >

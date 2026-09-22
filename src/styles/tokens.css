@@ -43,6 +43,8 @@
   --color-accent: var(--ant-color-primary, #3768fa);
   --color-accent-hover: var(--ant-color-primary-hover, #5a86ff);
   --color-accent-bg: var(--ant-color-primary-bg, #eaf0ff);
+  /* Stronger accent bg for selected items in tree/table views (more visible than primary-bg). */
+  --color-accent-bg-strong: var(--ant-color-primary-bg-hover, rgba(64, 128, 255, 0.22));
   --color-hover: var(--ant-control-item-bg-hover, rgba(0, 0, 0, 0.04));
   /* Directory-tree zebra stripe background: a very faint fill that follows the theme, adapting to light/dark. */
   --color-zebra: var(--ant-color-fill-quaternary, rgba(0, 0, 0, 0.02));
