@@ -9,7 +9,8 @@ use commands::fs::{allow_watch_path, read_text_file, write_text_file};
 use commands::git::{git_checkout_file, git_diff_refs, git_repo_info, git_show};
 use open_with::take_pending_open_paths;
 #[cfg(target_os = "macos")]
-use tauri::menu::{AboutMetadata, Menu, PredefinedMenuItem, Submenu};
+use tauri::menu::AboutMetadata;
+use tauri::menu::{Menu, PredefinedMenuItem, Submenu};
 use tauri::Manager;
 
 /// Install the app menu: tauri's default menu mirrored, minus Edit → Select All.
