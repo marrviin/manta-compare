@@ -16,7 +16,11 @@ document.addEventListener(
   (e) => {
     if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'a') return;
     const target = e.target as HTMLElement | null;
-    if (target?.closest('input, textarea, [contenteditable="true"], [contenteditable=""], .monaco-editor'))
+    if (
+      target?.closest(
+        'input, textarea, [contenteditable="true"], [contenteditable=""], .monaco-editor',
+      )
+    )
       return;
     e.preventDefault();
   },
