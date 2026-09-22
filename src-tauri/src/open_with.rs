@@ -13,24 +13,34 @@
 //!    the handoff race-free with a single code path.
 
 use std::path::PathBuf;
+#[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+#[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
 use std::thread;
+#[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
 use std::time::Duration;
 
+#[cfg(not(any(target_os = "macos", target_os = "ios", target_os = "android")))]
+use tauri::State;
+#[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
 use tauri::{AppHandle, Emitter, Manager, State};
+#[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
 use url::Url;
 
 /// How long to keep collecting `Opened` events before dispatching a batch.
+#[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
 const COLLECT_WINDOW: Duration = Duration::from_millis(300);
 
 /// Managed state for the open-file intake.
 #[derive(Default)]
 pub struct OpenState {
     /// Paths accumulated inside the current [`COLLECT_WINDOW`].
+    #[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
     buffer: Mutex<Vec<PathBuf>>,
     /// Bumped on every arrival; the collector whose generation is stale backs
     /// off so the newest event's collector does the dispatch.
+    #[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
     generation: AtomicU64,
     /// Paths waiting for the frontend to pull (see module doc).
     pending: Mutex<Vec<PathBuf>>,
@@ -38,6 +48,7 @@ pub struct OpenState {
 
 /// Entry point from `RunEvent::Opened`: convert `file://` URLs to local paths,
 /// buffer them and schedule the dispatch.
+#[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
 pub fn handle_opened(app: &AppHandle, state: State<'_, OpenState>, urls: Vec<Url>) {
     let fresh: Vec<PathBuf> = urls
         .into_iter()
@@ -60,6 +71,7 @@ pub fn handle_opened(app: &AppHandle, state: State<'_, OpenState>, urls: Vec<Url
 
 /// Wait out the collect window, then — if no newer arrival took over — take the
 /// buffered batch, park it and signal the frontend.
+#[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
 fn dispatch_after_window(app: &AppHandle, generation: u64) {
     thread::sleep(COLLECT_WINDOW);
     let state: State<OpenState> = app.state();
