@@ -109,6 +109,34 @@ function pickDiffAlgorithm(
   return 'advanced';
 }
 
+/**
+ * Monarch tokenization runs on the main thread; for a pathologically long single
+ * line (minified HTML/JS/JSON — e.g. a 20KB+ line with no newlines) WebKit's
+ * regex engine can stall it for minutes, freezing the whole diff view: content
+ * never renders and the "computing diff" bar spins forever (worker results can't
+ * be delivered while the main thread is blocked). Such files skip highlighting
+ * entirely — they diff as plaintext, which the diff computation doesn't care
+ * about (it's language-agnostic).
+ */
+const MAX_TOKENIZED_LINE_LEN = 5000;
+
+function hasVeryLongLine(content: string): boolean {
+  let start = 0;
+  for (;;) {
+    const nl = content.indexOf('\n', start);
+    const end = nl === -1 ? content.length : nl;
+    if (end - start > MAX_TOKENIZED_LINE_LEN) return true;
+    if (nl === -1) return false;
+    start = nl + 1;
+  }
+}
+
+/** Monaco language for a side: extension-based, but plaintext when the content
+ * carries pathologically long lines (see {@link MAX_TOKENIZED_LINE_LEN}). */
+function languageForContent(path: string | undefined, content: string): string {
+  return hasVeryLongLine(content) ? 'plaintext' : languageFor(path);
+}
+
 /** Map file extension to a Monaco language id; returns 'plaintext' if unrecognized. */
 function languageFor(path: string | undefined): string {
   if (!path) return 'plaintext';
@@ -549,8 +577,14 @@ export function MonacoPanel({
     if (!host) return;
     ensureTheme();
 
-    const original = monaco.editor.createModel(leftContent, languageFor(leftPath));
-    const modified = monaco.editor.createModel(rightContent, languageFor(rightPath));
+    const original = monaco.editor.createModel(
+      leftContent,
+      languageForContent(leftPath, leftContent),
+    );
+    const modified = monaco.editor.createModel(
+      rightContent,
+      languageForContent(rightPath, rightContent),
+    );
     modelsRef.current = { original, modified };
 
     const editor = monaco.editor.createDiffEditor(host, {
@@ -843,16 +877,16 @@ export function MonacoPanel({
     editor.updateOptions({ diffAlgorithm: pickDiffAlgorithm(models.original, models.modified) });
   }, [leftContent, rightContent]);
 
-  // Hot-swap the language.
+  // Hot-swap the language (content-dependent too: a very-long-line file demotes to plaintext).
   useEffect(() => {
     const model = modelsRef.current?.original;
-    if (model) monaco.editor.setModelLanguage(model, languageFor(leftPath));
-  }, [leftPath]);
+    if (model) monaco.editor.setModelLanguage(model, languageForContent(leftPath, leftContent));
+  }, [leftPath, leftContent]);
 
   useEffect(() => {
     const model = modelsRef.current?.modified;
-    if (model) monaco.editor.setModelLanguage(model, languageFor(rightPath));
-  }, [rightPath]);
+    if (model) monaco.editor.setModelLanguage(model, languageForContent(rightPath, rightContent));
+  }, [rightPath, rightContent]);
 
   // Hot-swap the readonly state (left = negation of originalEditable, right = readOnly).
   useEffect(() => {

@@ -389,6 +389,40 @@ pub fn path_kind(path: String) -> Result<String, String> {
     }
 }
 
+/// Rename (move within the same filesystem) a file or directory. Used by the
+/// folder-compare context menu's "rename" action; refuses to clobber a
+/// different existing target. Case-only renames on case-insensitive filesystems
+/// (macOS default) still pass: src and dst then canonicalize to the same file.
+#[tauri::command]
+pub fn rename_path(src: String, dst: String) -> Result<(), String> {
+    let src_path = Path::new(&src);
+    let dst_path = Path::new(&dst);
+    if !src_path.exists() {
+        return Err(format!("Source does not exist: {src}"));
+    }
+    if dst_path.exists() {
+        let same = match (fs::canonicalize(src_path), fs::canonicalize(dst_path)) {
+            (Ok(a), Ok(b)) => a == b,
+            _ => false,
+        };
+        if !same {
+            return Err(format!("Target already exists: {dst}"));
+        }
+    }
+    fs::rename(src_path, dst_path).map_err(|e| format!("Failed to rename {src}: {e}"))
+}
+
+/// Create a single directory (its parent must already exist). Used by the
+/// folder-compare context menu's "new folder" action.
+#[tauri::command]
+pub fn create_dir(path: String) -> Result<(), String> {
+    let p = Path::new(&path);
+    if p.exists() {
+        return Err(format!("Path already exists: {path}"));
+    }
+    fs::create_dir(p).map_err(|e| format!("Failed to create dir {path}: {e}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -558,6 +592,38 @@ mod tests {
             path_kind(root.join("nope.txt").to_string_lossy().into()).unwrap(),
             "missing"
         );
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn create_dir_and_rename_path_basics() {
+        let root = temp_root("create-rename");
+        // Parent must exist for the single-level create_dir.
+        assert!(create_dir(root.join("sub/new").to_string_lossy().into()).is_err());
+        fs::create_dir_all(root.join("sub")).unwrap();
+        let sub = root.join("sub");
+        create_dir(sub.join("new").to_string_lossy().into()).unwrap();
+        assert!(sub.join("new").is_dir());
+        // Creating over an existing path fails.
+        assert!(create_dir(sub.join("new").to_string_lossy().into()).is_err());
+
+        fs::write(sub.join("new/a.txt"), "x").unwrap();
+        let a = sub.join("new/a.txt").to_string_lossy().to_string();
+        let b = sub.join("new/b.txt").to_string_lossy().to_string();
+        rename_path(a.clone(), b.clone()).unwrap();
+        assert!(sub.join("new/b.txt").is_file());
+        assert!(!sub.join("new/a.txt").exists());
+        // Renaming onto a different existing target is refused.
+        fs::write(sub.join("new/other.txt"), "y").unwrap();
+        let other = sub.join("new/other.txt").to_string_lossy().to_string();
+        assert!(rename_path(b.clone(), other).is_err());
+        // Case-only rename still works (same file on case-insensitive fs; plain
+        // rename on case-sensitive ones since the target doesn't exist).
+        let b_upper = sub.join("new/B.txt").to_string_lossy().to_string();
+        rename_path(b, b_upper).unwrap();
+        assert!(sub.join("new/B.txt").is_file());
+        // Missing source errors.
+        assert!(rename_path(sub.join("new/gone.txt").to_string_lossy().into(), a).is_err());
         fs::remove_dir_all(&root).unwrap();
     }
 }

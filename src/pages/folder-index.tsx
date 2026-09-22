@@ -3,17 +3,21 @@
  *   - Each of the left/right panes has a column header: shows the selected directory name + icon buttons to open/change the directory;
  *   - Each of the left/right panes renders the same diff records (DiffSideTable), marking diffs with color/placeholders;
  *   - The bottom shows each side's file count on the left/right;
- *   - Right-clicking a diff node pops a menu: copy to the other side, delete to trash; the diff is recomputed after the action.
- *     Multi-select (Ctrl/Cmd or Shift click, files and folders) turns the same menu into batch actions.
+ *   - Right-clicking a diff node pops a grouped menu — open (default app / reveal
+ *     in Finder / copy path), new folder / rename, and copy to the other side /
+ *     delete to trash; the diff is recomputed after the filesystem actions.
+ *     Multi-select (Ctrl/Cmd or Shift click, files and folders) turns the menu
+ *     into batch actions (single-target items hide).
  * Clicking a row selects it; double-clicking a file opens it as a file tab and double-clicking
  * a folder toggles its expansion (see useFileTabs on the owning page).
  */
 import { useEffect, useMemo, useState } from 'react';
 import cx from 'classnames';
 import { open } from '@tauri-apps/plugin-dialog';
+import { openPath, revealItemInDir } from '@tauri-apps/plugin-opener';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
-import { Button, Empty, Modal, Tooltip } from 'antd';
+import { Button, Empty, Input, Modal, Tooltip } from 'antd';
 import { useTranslation } from 'react-i18next';
 import { FolderOpenOutlined } from '@ant-design/icons';
 import { Side } from '../diff-view';
@@ -32,6 +36,54 @@ function sideForX(x: number): Side {
   return x < window.innerWidth / 2 ? 'left' : 'right';
 }
 
+/**
+ * Small text-input dialog (rename / new-folder prompts): resolves the trimmed
+ * input on OK / Enter, null on cancel; '' means the user confirmed empty —
+ * callers treat both as abort.
+ */
+function promptText(opts: {
+  title: string;
+  okText: string;
+  cancelText: string;
+  placeholder?: string;
+  initialValue?: string;
+}): Promise<string | null> {
+  let value = opts.initialValue ?? '';
+  let settled = false;
+  const settle = (v: string | null) => {
+    if (settled) return;
+    settled = true;
+    resolve(v);
+  };
+  let resolve!: (v: string | null) => void;
+  const promise = new Promise<string | null>((r) => {
+    resolve = r;
+  });
+  Modal.confirm({
+    title: opts.title,
+    icon: null,
+    content: (
+      <Input
+        autoFocus
+        allowClear
+        defaultValue={opts.initialValue}
+        placeholder={opts.placeholder}
+        onChange={(e) => (value = e.target.value)}
+        onPressEnter={(e) => {
+          value = (e.target as HTMLInputElement).value;
+          settle(value.trim());
+          Modal.destroyAll();
+        }}
+      />
+    ),
+    okText: opts.okText,
+    cancelText: opts.cancelText,
+    onOk: () => settle(value.trim()),
+    onCancel: () => settle(null),
+  });
+  return promise;
+}
+
 export function FolderTreePane({ active }: { active: boolean }) {
   const { t, i18n } = useTranslation(['folder', 'common']);
   // Column-header labels under the diff namespace (size/mtime/name); folderColumns needs it + the current locale.
@@ -48,6 +100,7 @@ export function FolderTreePane({ active }: { active: boolean }) {
     expandedKeys,
     setExpandedKeys,
     refresh,
+    renameTab,
   } = useFolder();
   const [hoverSide, setHoverSide] = useState<Side | null>(null);
   const scrollRegister = useScrollSync();
@@ -172,33 +225,161 @@ export function FolderTreePane({ active }: { active: boolean }) {
     }
   }
 
-  // Right-click menu: copy to the other side + delete to trash (available for any node that exists on this side).
-  // With a multi-selection the labels show the affected count and the actions run over the whole batch.
-  const menuActions = useMemo<DiffMenuAction[]>(
-    () => [
-      {
-        key: 'copy',
-        label: (s, count) =>
-          count > 1
-            ? s === 'left'
-              ? t('copyToRightN', { count })
-              : t('copyToLeftN', { count })
-            : s === 'left'
-              ? t('copyToRight')
-              : t('copyToLeft'),
-        onClick: (nodes, s) => void copyEntries(nodes, s),
-      },
-      {
-        key: 'delete',
-        label: (_s, count) => (count > 1 ? t('deleteToTrashN', { count }) : t('deleteToTrash')),
-        danger: true,
-        onClick: (nodes, s) => void deleteEntries(nodes, s),
-      },
-    ],
-    // copyEntries / deleteEntries depend on leftDir/rightDir and are rebuilt when they change; menu text refreshes when t changes (language switch).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [leftDir, rightDir, t],
-  );
+  // Absolute path of a node on the given side.
+  const absPath = (s: Side, node: DiffRecord): string =>
+    `${s === 'left' ? leftDir : rightDir}/${node.path}`;
+
+  // Group 1 — open actions: hand the entry to the system (default app / file
+  // manager) or copy its absolute path to the clipboard.
+  async function openWithDefaultApp(nodes: DiffRecord[], s: Side) {
+    setError('');
+    try {
+      await openPath(absPath(s, nodes[0]));
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  async function revealInFileManager(nodes: DiffRecord[], s: Side) {
+    setError('');
+    try {
+      await revealItemInDir(absPath(s, nodes[0]));
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+
+  function copyPathToClipboard(nodes: DiffRecord[], s: Side) {
+    navigator.clipboard?.writeText(absPath(s, nodes[0])).catch((e) => setError(String(e)));
+  }
+
+  // Group 2 — mutate actions: create a folder inside the right-clicked directory
+  // (or its parent when a file was clicked), rename a single entry. Both prompt
+  // for the name, refresh the diff afterwards, and expand the affected directory.
+  async function newFolderIn(node: DiffRecord, s: Side) {
+    const root = s === 'left' ? leftDir : rightDir;
+    if (!root) return;
+    const name = await promptText({
+      title: t('newFolderTitle'),
+      okText: t('common:confirm'),
+      cancelText: t('common:cancel'),
+      placeholder: t('newFolderName'),
+    });
+    if (!name) return;
+    if (name.includes('/')) {
+      setError(t('invalidName'));
+      return;
+    }
+    const dir = node.isDir ? node.path : node.path.split('/').slice(0, -1).join('/');
+    const target = dir ? `${root}/${dir}/${name}` : `${root}/${name}`;
+    setError('');
+    try {
+      await invoke('create_dir', { path: target });
+    } catch (e) {
+      setError(String(e));
+      return;
+    }
+    if (dir && !expandedKeys.includes(dir)) setExpandedKeys([...expandedKeys, dir]);
+    await refresh();
+  }
+
+  async function renameEntry(node: DiffRecord, s: Side) {
+    const root = s === 'left' ? leftDir : rightDir;
+    if (!root) return;
+    const name = await promptText({
+      title: t('renameTitle'),
+      okText: t('common:confirm'),
+      cancelText: t('common:cancel'),
+      initialValue: node.name,
+    });
+    if (!name || name === node.name) return;
+    if (name.includes('/')) {
+      setError(t('invalidName'));
+      return;
+    }
+    const segs = node.path.split('/');
+    segs[segs.length - 1] = name;
+    setError('');
+    try {
+      await invoke('rename_path', {
+        src: `${root}/${node.path}`,
+        dst: `${root}/${segs.join('/')}`,
+      });
+    } catch (e) {
+      setError(String(e));
+      return;
+    }
+    // A tab open on the old path follows the rename (dirty tabs confirm first).
+    if (node.path !== segs.join('/')) renameTab(node.path, segs.join('/'));
+    await refresh();
+  }
+
+  // The menu actions must be referentially stable across renders (DiffSideTable closes over
+  // Right-click menu actions. Deliberately NOT memoized: a memoized array here closed over
+  // stale handlers (its deps can't track the tab list), so renameTab ran against an outdated
+  // tab list and tabs didn't follow a rename — stale tabs/expandedKeys could even drop tabs.
+  // Rebuilding per render keeps every closure fresh; the cost is a handful of array items.
+  // Group 3 — batch actions: copy to the other side + delete to trash (available
+  // for any node that exists on this side). With a multi-selection the labels
+  // show the affected count and the actions run over the whole batch; the
+  // single-target groups above hide.
+  const menuActions: DiffMenuAction[] = [
+    {
+      key: 'open',
+      group: 1,
+      single: true,
+      label: t('open'),
+      onClick: (nodes, s) => void openWithDefaultApp(nodes, s),
+    },
+    {
+      key: 'reveal',
+      group: 1,
+      single: true,
+      label: t('revealInFinder'),
+      onClick: (nodes, s) => void revealInFileManager(nodes, s),
+    },
+    {
+      key: 'copyPath',
+      group: 1,
+      single: true,
+      label: t('copyPath'),
+      onClick: (nodes, s) => copyPathToClipboard(nodes, s),
+    },
+    {
+      key: 'newFolder',
+      group: 2,
+      single: true,
+      label: t('newFolder'),
+      onClick: (nodes, s) => void newFolderIn(nodes[0], s),
+    },
+    {
+      key: 'rename',
+      group: 2,
+      single: true,
+      label: t('rename'),
+      onClick: (nodes, s) => void renameEntry(nodes[0], s),
+    },
+    {
+      key: 'copy',
+      group: 3,
+      label: (s, count) =>
+        count > 1
+          ? s === 'left'
+            ? t('copyToRightN', { count })
+            : t('copyToLeftN', { count })
+          : s === 'left'
+            ? t('copyToRight')
+            : t('copyToLeft'),
+      onClick: (nodes, s) => void copyEntries(nodes, s),
+    },
+    {
+      key: 'delete',
+      group: 3,
+      label: (_s, count) => (count > 1 ? t('deleteToTrashN', { count }) : t('deleteToTrash')),
+      danger: true,
+      onClick: (nodes, s) => void deleteEntries(nodes, s),
+    },
+  ];
 
   // The record tree shared by both sides (synthesized from entries once).
   const records = useMemo(() => buildRecords(entries), [entries]);
@@ -221,7 +402,9 @@ export function FolderTreePane({ active }: { active: boolean }) {
   const colHead = (side: Side, dir: string | null) => (
     <div
       className={cx(
-        'flex-1 basis-0 flex items-center gap-1 pl-3 pr-2 py-0.5 text-xs border-r border-line last:border-r-0',
+        // min-w-0: without it min-width:auto resolves to the full path width and the
+        // column refuses to shrink (no ellipsis, the 50/50 split breaks) — same as diff-view's colHead.
+        'min-w-0 flex-1 basis-0 flex items-center gap-1 pl-3 pr-2 py-0.5 text-xs border-r border-line last:border-r-0',
         hoverSide === side && 'bg-accent-bg',
         dir ? 'text-fg' : 'text-muted',
       )}
@@ -231,7 +414,9 @@ export function FolderTreePane({ active }: { active: boolean }) {
           dir="rtl"
           className="flex-1 min-w-0 whitespace-nowrap overflow-hidden text-ellipsis text-left"
         >
-          <bdi>{dir ?? (side === 'left' ? t('pickOrDropLeft') : t('pickOrDropRight'))}</bdi>
+          {/* dir=rtl makes the ellipsis appear on the left (path tail stays visible); the LRMs
+              keep the path's own left-to-right reading order (see diff-view colHead). */}
+          {'‎' + (dir ?? (side === 'left' ? t('pickOrDropLeft') : t('pickOrDropRight'))) + '‎'}
         </span>
       </Tooltip>
       <Tooltip title={dir ? t('changeDir') : t('openDir')}>

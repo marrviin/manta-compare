@@ -68,6 +68,8 @@ export interface FolderContext extends ShellContext {
   setExpandedKeys: (keys: string[]) => void;
   /** Recompute the diff for the two currently-picked directories. */
   refresh: () => Promise<void>;
+  /** Retarget a tab after its file was renamed on disk (context-menu rename). */
+  renameTab: (from: string, to: string) => void;
 }
 
 const FolderCtx = createContext<FolderContext | null>(null);
@@ -118,8 +120,17 @@ export function FolderComparePage() {
     basePath: '/folder-compare',
     isDirty: (p) => !!dirtyMap[p],
   });
-  const { tabs, activePath, openFile, activate, closeTab, closeOthers, closeAll, resetForNewDiff } =
-    tabsApi;
+  const {
+    tabs,
+    activePath,
+    openFile,
+    activate,
+    closeTab,
+    closeOthers,
+    closeAll,
+    renameTab,
+    resetForNewDiff,
+  } = tabsApi;
 
   // Route-leave guard, hoisted to the page: fires when leaving /folder-compare
   // with any dirty tab (search-only tab switches never hit the pathname check).
@@ -282,6 +293,7 @@ export function FolderComparePage() {
       expandedKeys,
       setExpandedKeys,
       refresh,
+      renameTab,
     }),
     [
       shell,
@@ -296,6 +308,7 @@ export function FolderComparePage() {
       setDirs,
       expandedKeys,
       refresh,
+      renameTab,
     ],
   );
 

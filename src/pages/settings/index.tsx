@@ -53,19 +53,19 @@ export function SettingsShell({ activeKey, onChange }: SettingsShellProps) {
         </ConfigProvider>
       </nav>
 
-      {/* Right content area: the panel scrolls full-height beneath a macOS-settings-style
-          title strip (.pc-settings-header), whose gradient fades the content out as it
-          slips under the strip. box-border: this project ships no global border-box reset
-          (no Tailwind preflight), and h-full + vertical padding would otherwise overflow
-          the pane by exactly the padding — clipping the bottom of the scroll area. */}
-      <div className="relative flex-1 min-w-0 h-full">
-        <div className="box-border h-full min-h-0 min-w-0 overflow-auto px-6 pt-[70px] pb-8">
-          {active === 'ignore' ? <IgnoreTab /> : active === 'about' ? <AboutTab /> : <GeneralTab />}
-        </div>
+      {/* Right content area: a fixed title strip (.pc-settings-header) on top, the
+          scroll area below it (box-border: this project ships no global border-box
+          reset (no Tailwind preflight), and h-full + vertical padding would otherwise
+          overflow the pane by exactly the padding — clipping the bottom of the scroll
+          area). */}
+      <div className="flex flex-1 min-w-0 h-full flex-col">
         {/* pointer-events-none: clicks pass through to the Modal's close button (which
-            sits in this strip's top-right corner) and to the content underneath. */}
-        <div className="pc-settings-header pointer-events-none absolute inset-x-0 top-0 z-10 flex h-[54px] items-center px-6">
+            sits in this strip's top-right corner). */}
+        <div className="pc-settings-header pointer-events-none flex h-[54px] shrink-0 items-center px-6">
           <h3 className="m-0 text-md font-semibold">{t(active)}</h3>
+        </div>
+        <div className="box-border min-h-0 min-w-0 flex-1 overflow-auto px-6 pt-4 pb-8">
+          {active === 'ignore' ? <IgnoreTab /> : active === 'about' ? <AboutTab /> : <GeneralTab />}
         </div>
       </div>
     </div>

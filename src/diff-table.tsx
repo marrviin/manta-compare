@@ -71,6 +71,18 @@ export interface DiffMenuAction {
   /** Dangerous item (red), such as delete. */
   danger?: boolean;
   /**
+   * Visual group id: consecutive items sharing a group render together and a
+   * divider is drawn between different groups (undefined = group 0). Declared
+   * order within a group is preserved; groups appear in first-declaration order.
+   */
+  group?: number;
+  /**
+   * Single-target operation (open / rename / new-folder style): only offered
+   * when exactly one node is right-clicked or selected, so multi-selections
+   * can't fan a one-target action across many rows.
+   */
+  single?: boolean;
+  /**
    * Whether this item is available for the given node / side. Omitting it means "available if it exists on this side".
    * Returning false hides the item; if a row has no available items, no menu pops for that row.
    * For a multi-selection the action only runs on the selected nodes this returns true for.
@@ -426,15 +438,26 @@ export function DiffSideTable({
 
   const menuItems = useMemo<MenuProps['items']>(() => {
     if (!ctx || !menuActions) return [];
-    return menuActions
-      .map((a) => ({ action: a, nodes: eligibleFor(a) }))
-      .filter(({ nodes }) => nodes.length > 0)
-      .map(({ action, nodes }) => ({
+    const items: NonNullable<MenuProps['items']> = [];
+    let prevGroup: number | undefined;
+    for (const action of menuActions) {
+      // Single-target ops hide on multi-selections (their onClick runs once, not per node).
+      if (action.single && ctxNodes.length > 1) continue;
+      const nodes = eligibleFor(action);
+      if (nodes.length === 0) continue;
+      const group = action.group ?? 0;
+      if (items.length > 0 && group !== prevGroup) {
+        items.push({ type: 'divider', key: `__div__${action.key}` });
+      }
+      prevGroup = group;
+      items.push({
         key: action.key,
         label: typeof action.label === 'function' ? action.label(side, nodes.length) : action.label,
         danger: action.danger,
-      }));
-  }, [ctx, menuActions, eligibleFor, side]);
+      });
+    }
+    return items;
+  }, [ctx, menuActions, eligibleFor, side, ctxNodes]);
 
   const onMenuClick = useCallback<NonNullable<MenuProps['onClick']>>(
     ({ key }) => {
