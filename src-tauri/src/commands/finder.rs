@@ -44,7 +44,9 @@ fn workflow_dir() -> Result<PathBuf, String> {
 /// Nudge the Services cache so a fresh install shows up (or a removal
 /// disappears) without a logout. Best-effort: errors are ignored.
 fn flush_services_cache() {
-    let _ = std::process::Command::new("/System/Library/CoreServices/pbs").arg("-flush").output();
+    let _ = std::process::Command::new("/System/Library/CoreServices/pbs")
+        .arg("-flush")
+        .output();
 }
 
 /// Bump when a template file changes so existing installs are rewritten on the
@@ -72,7 +74,8 @@ pub fn finder_quick_action_install() -> Result<(), String> {
     for (rel, contents) in TEMPLATE_FILES {
         let path = dir.join(rel);
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(|e| format!("failed to create {}: {e}", parent.display()))?;
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("failed to create {}: {e}", parent.display()))?;
         }
         fs::write(&path, contents)
             .map_err(|e| format!("failed to write {}: {e}", path.display()))?;
@@ -81,7 +84,8 @@ pub fn finder_quick_action_install() -> Result<(), String> {
     // version marker behind (the next sync will then rewrite the bundle).
     let version_path = dir.join(VERSION_FILE);
     if let Some(parent) = version_path.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("failed to create {}: {e}", parent.display()))?;
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("failed to create {}: {e}", parent.display()))?;
     }
     fs::write(&version_path, WORKFLOW_VERSION)
         .map_err(|e| format!("failed to write {}: {e}", version_path.display()))?;
